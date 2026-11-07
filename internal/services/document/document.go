@@ -102,7 +102,7 @@ func (d *Document) StyledText() string {
 			}
 			open, close := styleTags(r.Style)
 			b.WriteString(open)
-			b.WriteString(r.Text)
+			b.WriteString(decorateRunText(r.Text, r.Style))
 			b.WriteString(close)
 		}
 	}
@@ -146,7 +146,7 @@ func (d *Document) StyledTextWithCursor() string {
 			if !cursorHere {
 				if r.Text != "" {
 					b.WriteString(open)
-					b.WriteString(r.Text)
+					b.WriteString(decorateRunText(r.Text, r.Style))
 					b.WriteString(close)
 				}
 				pos += len(runes)
@@ -157,14 +157,20 @@ func (d *Document) StyledTextWithCursor() string {
 			for i, ch := range runes {
 				if pos+i == d.CursorOff {
 					b.WriteString(open)
-					b.WriteString(string(runes[:i]))
+					b.WriteString(decorateRunText(string(runes[:i]), r.Style))
 					b.WriteString(close)
 					b.WriteString(caretOpen)
-					b.WriteRune(ch)
+					// caret cell: still show underline decoration on the underlying char
+					if r.Style&StyleUnderline != 0 {
+						b.WriteRune(ch)
+						b.WriteRune('\u0332')
+					} else {
+						b.WriteRune(ch)
+					}
 					b.WriteString(caretClose)
 					if i+1 < len(runes) {
 						b.WriteString(open)
-						b.WriteString(string(runes[i+1:]))
+						b.WriteString(decorateRunText(string(runes[i+1:]), r.Style))
 						b.WriteString(close)
 					}
 					cursorDrawn = true
@@ -175,7 +181,7 @@ func (d *Document) StyledTextWithCursor() string {
 			if !drawnInThisRun {
 				if r.Text != "" {
 					b.WriteString(open)
-					b.WriteString(r.Text)
+					b.WriteString(decorateRunText(r.Text, r.Style))
 					b.WriteString(close)
 				}
 			}
@@ -199,16 +205,16 @@ func (d *Document) StyledTextWithCursor() string {
 }
 
 func styleTags(s Style) (open, close string) {
-	// Always start with a full reset. Underline (SGR 4) is sticky on many
-	// terminals if the previous run only used [::-] — the attribute can
-	// bleed into following text and even to the end of the line.
+	// Underline is NOT emitted as the terminal "u" attribute — SGR underline
+	// is sticky on many terminals and keeps painting after it is turned off.
+	// Underlined runs are decorated with a combining low-line instead
+	// (see decorateRunText). Bold/italic/strike still use real attributes.
 	const reset = "[-:-:-]"
+	// Strip underline from the attribute mask used for tview tags.
+	s = s &^ StyleUnderline
 	if s == StyleNone {
 		return reset, ""
 	}
-	// tview attribute flags live in the third field of a colour tag:
-	//   [foreground:background:attributes]
-	//   attributes: b=bold, i=italic, u=underline, s=strikethrough
 	attrs := ""
 	if s&StyleBold != 0 {
 		attrs += "b"
@@ -216,14 +222,32 @@ func styleTags(s Style) (open, close string) {
 	if s&StyleItalic != 0 {
 		attrs += "i"
 	}
-	if s&StyleUnderline != 0 {
-		attrs += "u"
-	}
 	if s&StyleStrike != 0 {
 		attrs += "s"
 	}
+	if attrs == "" {
+		return reset, ""
+	}
 	return reset + "[::" + attrs + "]", reset
 }
+
+// decorateRunText applies display-only decorations that are not terminal attrs.
+// Underline → U+0332 COMBINING LOW LINE after each visible character.
+func decorateRunText(text string, style Style) string {
+	if style&StyleUnderline == 0 || text == "" {
+		return text
+	}
+	var b strings.Builder
+	b.Grow(len(text) * 2)
+	for _, r := range text {
+		b.WriteRune(r)
+		if r != '\n' && r != '\t' {
+			b.WriteRune('\u0332')
+		}
+	}
+	return b.String()
+}
+
 
 // SetText replaces the entire content with plain text (no styles).
 func (d *Document) SetText(s string) {
