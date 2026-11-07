@@ -1,4 +1,4 @@
-// Copyright (c) 2025 @drclcomputers. All rights reserved.
+// Copyright (c)  @drclcomputers. All rights reserved.
 //
 // This work is licensed under the terms of the MIT license.
 // For a copy, see <https://opensource.org/licenses/MIT>.
@@ -11,8 +11,11 @@ import (
 	"gowrite/internal/services/document"
 	"gowrite/internal/services/uitheme"
 	"gowrite/internal/utils"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/gdamore/tcell/v2"
@@ -20,36 +23,28 @@ import (
 )
 
 // Editor is the main writing surface.
-// Uses a TextView (not TextArea) so tview style tags actually render:
-// bold / italic / underline / strikethrough show up when the terminal supports them.
 type Editor struct {
-	App    *tview.Application
-	Doc    *document.Document
-	Root   *tview.Flex
-	View   *tview.TextView
-	Status *tview.TextView
+	App      *tview.Application
+	Doc      *document.Document
+	Root     *tview.Flex
+	View     *tview.TextView
+	Status   *tview.TextView
 	TitleBar *tview.TextView
 
-	// Size of the document view the text was last laid out for. When the
-	// terminal is resized we re-wrap (see NewEditor).
 	lastW, lastH int
+	flashSeq     int
 }
 
 // NewEditor builds the full-screen editor layout.
 func NewEditor(app *tview.Application, doc *document.Document) *Editor {
-	e := &Editor{
-		App: app,
-		Doc: doc,
-	}
+	e := &Editor{App: app, Doc: doc}
 
-	// Title bar
 	e.TitleBar = tview.NewTextView().
 		SetDynamicColors(true).
 		SetTextAlign(tview.AlignCenter)
 	e.TitleBar.SetBackgroundColor(uitheme.Ink)
 	e.refreshTitle()
 
-	// Document view – TextView with dynamic colours so [::b]/[::i]/[::u] work
 	e.View = tview.NewTextView().
 		SetDynamicColors(true).
 		SetWordWrap(true).
@@ -64,41 +59,25 @@ func NewEditor(app *tview.Application, doc *document.Document) *Editor {
 	e.View.SetTitleAlign(tview.AlignLeft)
 	e.View.SetTextColor(uitheme.Text)
 
-	// Status bar
 	e.Status = tview.NewTextView().
 		SetDynamicColors(true).
 		SetTextAlign(tview.AlignLeft)
 	e.Status.SetBackgroundColor(uitheme.Panel)
 	e.refreshStatus()
 
-	// Layout: title | text | status
 	e.Root = tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(e.TitleBar, 1, 0, false).
 		AddItem(e.View, 0, 1, true).
 		AddItem(e.Status, 1, 0, false)
-
 	e.Root.SetBackgroundColor(uitheme.Ink)
 
-	// All editing goes through the document model; we redraw after every change.
 	e.Root.SetInputCapture(e.handleKeys)
 	e.View.SetInputCapture(e.handleKeys)
 
-	// Ctrl+C copies while text is selected; otherwise it keeps its global
-	// meaning from main.go (the exit prompt).
-	prevCapture := app.GetInputCapture()
-	app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		if event.Key() == tcell.KeyCtrlC && app.GetFocus() == e.View && e.Doc.HasSelection() {
-			e.copySelection()
-			return nil
-		}
-		if prevCapture != nil {
-			return prevCapture(event)
-		}
-		return event
-	})
+	// NOTE: no Ctrl+C interceptor here. Ctrl+C falls through to main.go's
+	// global handler (exit prompt) like a standard terminal interrupt.
+	// Copy is now Alt+Shift+C.
 
-	// Text is wrapped by the document model to the view's width, so whenever
-	// the view's size changes (first draw, terminal resize) lay it out again.
 	app.SetAfterDrawFunc(func(_ tcell.Screen) {
 		_, _, w, h := e.View.GetInnerRect()
 		if w == e.lastW && h == e.lastH {
@@ -113,21 +92,12 @@ func NewEditor(app *tview.Application, doc *document.Document) *Editor {
 }
 
 func (e *Editor) redraw() {
-	// The document wraps and aligns text itself, so it needs the real width
-	// of the view.
 	_, _, w, h := e.View.GetInnerRect()
 	if w > 4 {
-		e.Doc.DisplayWidth = w
+		e.Doc.SetDisplayWidth(w)
 	}
-
-	// Remember where the view is scrolled to (mouse wheel included), because
-	// SetText resets it.
 	top, _ := e.View.GetScrollOffset()
-
 	e.View.SetText(e.Doc.StyledTextWithCursor())
-
-	// Scroll the minimum amount needed to keep the cursor's screen row
-	// (a wrapped line, not a paragraph) inside the view.
 	if h > 0 {
 		row := e.Doc.CursorRow()
 		if row < top {
@@ -140,13 +110,10 @@ func (e *Editor) redraw() {
 		top = 0
 	}
 	e.View.ScrollTo(top, 0)
-
 	e.refreshStatus()
 	e.refreshTitle()
 }
 
-// pageRows is how many lines Page Up / Page Down move: one screenful, minus
-// one line of overlap so the reader keeps their place.
 func (e *Editor) pageRows() int {
 	_, _, _, h := e.View.GetInnerRect()
 	if h <= 1 {
@@ -157,12 +124,12 @@ func (e *Editor) pageRows() int {
 
 func (e *Editor) refreshTitle() {
 	dirty := ""
-	if e.Doc.Dirty {
+	if e.Doc.IsDirty() {
 		dirty = " [yellow]•[::-]"
 	}
-	name := e.Doc.Title
-	if e.Doc.Filename != "" {
-		name = utils.PrettyPath(e.Doc.Filename, "title")
+	name := e.Doc.GetTitle()
+	if fn := e.Doc.GetFilename(); fn != "" {
+		name = utils.PrettyPath(fn, "title")
 	}
 	e.TitleBar.SetText(fmt.Sprintf("[::b]GoWrite[::-]  %s%s  [gray]v%s[::-]",
 		name, dirty, utils.VER))
@@ -180,12 +147,11 @@ func (e *Editor) refreshStatus() {
 		sel = fmt.Sprintf("  [teal]Sel:%d[::-]", n)
 	}
 	e.Status.SetText(fmt.Sprintf(
-		" [teal]Ln %d, Col %d[::-]  [teal]W:%d C:%d ¶%d[::-]%s  [yellow]%s[::-]  [gray]| Alt+C/Y colour · Alt+L/E/R align · Alt+B/I/U style · ? help[::-]",
+		" [teal]Ln %d, Col %d[::-]  [teal]W:%d C:%d ¶%d[::-]%s  [yellow]%s[::-]  [gray]| Alt+C/Y colour · Alt+L/E/R align · Alt+B/I/U style · Alt+Z undo · ? help[::-]",
 		line, col, words, chars, paras, sel, style))
 }
 
 func (e *Editor) handleKeys(event *tcell.EventKey) *tcell.EventKey {
-	// Quit
 	if event.Key() == tcell.KeyEscape {
 		if e.Doc.HasSelection() {
 			e.Doc.ClearSelection()
@@ -196,7 +162,6 @@ func (e *Editor) handleKeys(event *tcell.EventKey) *tcell.EventKey {
 		return nil
 	}
 
-	// Help
 	if event.Rune() == '?' || (event.Rune() == '/' && event.Modifiers()&tcell.ModAlt != 0) {
 		e.showHelp()
 		return nil
@@ -204,105 +169,18 @@ func (e *Editor) handleKeys(event *tcell.EventKey) *tcell.EventKey {
 
 	mod := event.Modifiers()
 
-	// Ctrl shortcuts
-	if mod&tcell.ModCtrl != 0 {
-		switch event.Key() {
-		case tcell.KeyCtrlB:
-			e.toggleStyle(document.StyleBold)
-			return nil
-		case tcell.KeyCtrlI:
-			e.toggleStyle(document.StyleItalic)
-			return nil
-		case tcell.KeyCtrlU:
-			e.toggleStyle(document.StyleUnderline)
-			return nil
-		case tcell.KeyCtrlF:
-			e.showFindDialog(false)
-			return nil
-		case tcell.KeyCtrlH:
-			e.showFindDialog(true)
-			return nil
-		case tcell.KeyCtrlG:
-			e.showGoToDialog()
-			return nil
-		case tcell.KeyCtrlS:
-			e.saveDocument()
-			return nil
-		case tcell.KeyCtrlA:
-			e.Doc.SelectAll()
-			e.redraw()
-			return nil
-		case tcell.KeyCtrlX:
-			e.cutSelection()
-			return nil
-		case tcell.KeyCtrlV:
-			e.pasteClipboard()
-			return nil
-		case tcell.KeyLeft:
-			e.prepareMove(mod&tcell.ModShift != 0)
-			e.Doc.MoveWordLeft()
-			e.redraw()
-			return nil
-		case tcell.KeyRight:
-			e.prepareMove(mod&tcell.ModShift != 0)
-			e.Doc.MoveWordRight()
-			e.redraw()
-			return nil
-		}
-	}
-
-	// Alt shortcuts (same spirit as GoSheet)
+	// ---- Alt shortcuts (letters) -------------------------------------------
+	// Every application shortcut is Alt-based. Shift is used to disambiguate
+	// the "extra" bindings (copy / cut / paste / select all / redo).
 	if mod&tcell.ModAlt != 0 {
+		hasShift := mod&tcell.ModShift != 0
 		switch event.Rune() {
-		case 's', 'S':
-			e.saveDocument()
-			return nil
-		case 'o', 'O':
-			e.openDocument()
-			return nil
-		case 'n', 'N':
-			e.newDocument()
-			return nil
-		case 'f', 'F':
-			e.showFindDialog(false)
-			return nil
-		case 'h', 'H':
-			e.showFindDialog(true)
-			return nil
-		case 'g', 'G':
-			e.showGoToDialog()
-			return nil
-		case 'c', 'C':
-			e.showColorPicker(false) // foreground
-			return nil
-		case 'y', 'Y':
-			e.showColorPicker(true) // background
-			return nil
-		case 'l', 'L':
-			e.Doc.SetParagraphAlign(document.AlignLeft)
-			e.redraw()
-			return nil
-		case 'e', 'E':
-			e.Doc.SetParagraphAlign(document.AlignCenter)
-			e.redraw()
-			return nil
-		case 'r', 'R':
-			e.Doc.SetParagraphAlign(document.AlignRight)
-			e.redraw()
-			return nil
-		case 'b', 'B':
-			e.toggleStyle(document.StyleBold)
-			return nil
-		case 'i', 'I':
-			e.toggleStyle(document.StyleItalic)
-			return nil
-		case 'u', 'U':
-			e.toggleStyle(document.StyleUnderline)
-			return nil
-		case 'k', 'K':
-			e.toggleStyle(document.StyleStrike)
-			return nil
 		case 'a', 'A':
+			if hasShift {
+				e.Doc.SelectAll()
+				e.redraw()
+				return nil
+			}
 			if e.Doc.ApplyActiveToSelection() {
 				e.redraw()
 				return nil
@@ -311,6 +189,75 @@ func (e *Editor) handleKeys(event *tcell.EventKey) *tcell.EventKey {
 			if s != document.StyleNone {
 				e.Doc.ApplyStyleToParagraph(s, true)
 				e.redraw()
+			}
+			return nil
+		case 'b', 'B':
+			e.toggleStyle(document.StyleBold)
+			return nil
+		case 'c', 'C':
+			if hasShift {
+				e.copySelection()
+				return nil
+			}
+			e.showColorPicker(false) // foreground
+			return nil
+		case 'e', 'E':
+			e.Doc.SetParagraphAlign(document.AlignCenter)
+			e.redraw()
+			return nil
+		case 'f', 'F':
+			e.showFindDialog(false)
+			return nil
+		case 'g', 'G':
+			e.showGoToDialog()
+			return nil
+		case 'h', 'H':
+			e.showFindDialog(true)
+			return nil
+		case 'i', 'I':
+			e.toggleStyle(document.StyleItalic)
+			return nil
+		case 'k', 'K':
+			e.toggleStyle(document.StyleStrike)
+			return nil
+		case 'l', 'L':
+			e.Doc.SetParagraphAlign(document.AlignLeft)
+			e.redraw()
+			return nil
+		case 'n', 'N':
+			e.newDocument()
+			return nil
+		case 'o', 'O':
+			e.openDocument()
+			return nil
+		case 'r', 'R':
+			e.Doc.SetParagraphAlign(document.AlignRight)
+			e.redraw()
+			return nil
+		case 's', 'S':
+			e.saveDocument()
+			return nil
+		case 'u', 'U':
+			e.toggleStyle(document.StyleUnderline)
+			return nil
+		case 'v', 'V':
+			if hasShift {
+				e.pasteClipboard()
+				return nil
+			}
+		case 'x', 'X':
+			if hasShift {
+				e.cutSelection()
+				return nil
+			}
+		case 'y', 'Y':
+			e.showColorPicker(true) // background
+			return nil
+		case 'z', 'Z':
+			if hasShift {
+				e.redo()
+			} else {
+				e.undo()
 			}
 			return nil
 		}
@@ -326,11 +273,18 @@ func (e *Editor) handleKeys(event *tcell.EventKey) *tcell.EventKey {
 		return nil
 	}
 
-	// Navigation. Shift extends the selection; a plain move clears it
-	// (Left / Right collapse it to its start / end).
+	// Navigation. Shift extends the selection; a plain move clears it.
+	// Alt+Shift+Left/Right = word navigation (with selection extension).
 	shift := mod&tcell.ModShift != 0
+	altShift := mod&tcell.ModAlt != 0 && shift
 	switch event.Key() {
 	case tcell.KeyLeft:
+		if altShift {
+			e.prepareMove(true)
+			e.Doc.MoveWordLeft()
+			e.redraw()
+			return nil
+		}
 		if !shift && e.Doc.HasSelection() {
 			e.Doc.CollapseSelection(true)
 		} else {
@@ -340,6 +294,12 @@ func (e *Editor) handleKeys(event *tcell.EventKey) *tcell.EventKey {
 		e.redraw()
 		return nil
 	case tcell.KeyRight:
+		if altShift {
+			e.prepareMove(true)
+			e.Doc.MoveWordRight()
+			e.redraw()
+			return nil
+		}
 		if !shift && e.Doc.HasSelection() {
 			e.Doc.CollapseSelection(false)
 		} else {
@@ -359,7 +319,6 @@ func (e *Editor) handleKeys(event *tcell.EventKey) *tcell.EventKey {
 		e.redraw()
 		return nil
 	case tcell.KeyHome:
-		// Home = start of the wrapped line; Ctrl/Alt+Home = start of document
 		e.prepareMove(shift)
 		if mod&(tcell.ModCtrl|tcell.ModAlt) != 0 {
 			e.Doc.MoveDocStart()
@@ -369,7 +328,6 @@ func (e *Editor) handleKeys(event *tcell.EventKey) *tcell.EventKey {
 		e.redraw()
 		return nil
 	case tcell.KeyEnd:
-		// End = end of the wrapped line; Ctrl/Alt+End = end of document
 		e.prepareMove(shift)
 		if mod&(tcell.ModCtrl|tcell.ModAlt) != 0 {
 			e.Doc.MoveDocEnd()
@@ -389,10 +347,8 @@ func (e *Editor) handleKeys(event *tcell.EventKey) *tcell.EventKey {
 		e.redraw()
 		return nil
 	case tcell.KeyInsert:
-		// Ctrl+Insert = copy, Shift+Insert = paste
-		if mod&tcell.ModCtrl != 0 {
-			e.copySelection()
-		} else if shift {
+		// Shift+Insert = paste (non-Ctrl, preserved).
+		if shift {
 			e.pasteClipboard()
 		}
 		return nil
@@ -405,6 +361,7 @@ func (e *Editor) handleKeys(event *tcell.EventKey) *tcell.EventKey {
 		e.redraw()
 		return nil
 	case tcell.KeyDelete:
+		// Shift+Delete = cut (non-Ctrl, preserved).
 		if shift {
 			e.cutSelection()
 			return nil
@@ -418,10 +375,8 @@ func (e *Editor) handleKeys(event *tcell.EventKey) *tcell.EventKey {
 		return nil
 	}
 
-	// Printable runes
 	r := event.Rune()
 	if r != 0 && unicode.IsPrint(r) {
-		// Skip if this was an Alt-combo we didn't handle (already returned above)
 		if mod&tcell.ModAlt != 0 || mod&tcell.ModCtrl != 0 {
 			return nil
 		}
@@ -434,17 +389,12 @@ func (e *Editor) handleKeys(event *tcell.EventKey) *tcell.EventKey {
 }
 
 func (e *Editor) toggleStyle(s document.Style) {
-	// With a selection the style is applied to (or removed from) the selected
-	// text. Otherwise it only changes the active typing style: new characters
-	// use it, existing text is untouched.
 	if !e.Doc.ToggleStyleOnSelection(s) {
 		e.Doc.ToggleStyle(s)
 	}
 	e.redraw()
 }
 
-// prepareMove starts or extends the selection (Shift held) or clears it, just
-// before the cursor moves.
 func (e *Editor) prepareMove(extend bool) {
 	if extend {
 		e.Doc.BeginSelection()
@@ -481,9 +431,27 @@ func (e *Editor) pasteClipboard() {
 	e.redraw()
 }
 
+func (e *Editor) undo() {
+	if !e.Doc.Undo() {
+		e.flashStatus("Nothing to undo")
+		return
+	}
+	e.redraw()
+	e.flashStatus("Undone")
+}
+
+func (e *Editor) redo() {
+	if !e.Doc.Redo() {
+		e.flashStatus("Nothing to redo")
+		return
+	}
+	e.redraw()
+	e.flashStatus("Redone")
+}
+
 func (e *Editor) confirmQuit() {
 	msg := "Quit GoWrite?"
-	if e.Doc.Dirty {
+	if e.Doc.IsDirty() {
 		msg = "You have unsaved changes.\nQuit anyway?"
 	}
 	modal := tview.NewModal().
@@ -501,55 +469,58 @@ func (e *Editor) confirmQuit() {
 }
 
 func (e *Editor) showHelp() {
-	helpText := `[::b]GoWrite – Keyboard Shortcuts[::-]
+	helpText := `[#f0d090::b]GoWrite – Keyboard Shortcuts[-]
 
-[yellow]Navigation[::-]
+[#7dcea0::b]NAVIGATION[-]
   Arrow keys            Move (↑/↓ follow wrapped lines)
   Home / End            Start / end of the line
-  Ctrl+Home / Ctrl+End  Start / end of the document
+  Alt+Home / Alt+End    Start / end of the document
   PgUp / PgDn           Move one screen up / down
-  Ctrl+← / Ctrl+→       Word left / right
-  Alt+G  or  Ctrl+G     Go to line (paragraph)
+  Alt+Shift+← / →       Word left / right
+  Alt+G                 Go to line (paragraph)
 
-[yellow]Selection & clipboard[::-]
+[#8ecae6::b]SELECTION & CLIPBOARD[-]
   Shift+arrows/Home/End/PgUp/PgDn   Select
-  Shift+Ctrl+← / →      Select by word
-  Ctrl+A                Select all
+  Alt+Shift+← / →       Select by word
+  Alt+Shift+A           Select all
   Esc                   Clear the selection
-  Ctrl+C / Ctrl+Insert  Copy (Ctrl+C with nothing selected = exit prompt)
-  Ctrl+X / Shift+Delete Cut
-  Ctrl+V / Shift+Insert Paste
+  Alt+Shift+C           Copy
+  Alt+Shift+X / Shift+Delete        Cut
+  Alt+Shift+V / Shift+Insert        Paste
   Typing, Backspace and Delete replace the selection.
   Styles, colours and alignment apply to the selection.
 
-[yellow]Search[::-]
-  Alt+F  or  Ctrl+F     Find
-  Alt+H  or  Ctrl+H     Find & Replace
+[#f0d090::b]UNDO / REDO[-]
+  Alt+Z                 Undo
+  Alt+Shift+Z           Redo
+
+[#f0d090::b]SEARCH[-]
+  Alt+F                 Find
+  Alt+H                 Find & Replace
   F3 / F4               Find next / previous
 
-[yellow]Styling[::-]
-  Alt+B / Ctrl+B        Toggle Bold
-  Alt+I / Ctrl+I        Toggle Italic
-  Alt+U / Ctrl+U        Toggle Underline
+[#8ecae6::b]STYLING[-]
+  Alt+B                 Toggle Bold
+  Alt+I                 Toggle Italic
+  Alt+U                 Toggle Underline
   Alt+K                 Toggle Strikethrough
-  Alt+C                 Text colour
-  Alt+Y                 Background colour
+  Alt+C                 Text colour (grid palette)
+  Alt+Y                 Background colour (grid palette)
   Alt+L / E / R         Align left / center / right
+  Alt+A                 Apply active style to selection/paragraph
 
-[yellow]File[::-]
+[#f0d090::b]FILE[-]
   Alt+N                 New document
   Alt+O                 Open document
-  Alt+S / Ctrl+S        Save document
+  Alt+S                 Save document
 
-[yellow]Other[::-]
-  ?  or  Alt+/          This help
-  Esc                   Quit (asks if dirty); clears a selection first
-
-Word wrap is always on and follows the window size.
+[#8aa0b8]Word wrap is always on and follows the window size.
 Alignment applies to every wrapped line of a paragraph.
 Enter starts a new paragraph.
 New text uses the active style + colours (status bar).
-`
+Ctrl+C is reserved for the standard terminal exit prompt.[-]
+
+[#5c6b7a]Esc closes this.[-]`
 
 	tv := tview.NewTextView().
 		SetDynamicColors(true).
@@ -557,65 +528,30 @@ New text uses the active style + colours (status bar).
 		SetScrollable(true).
 		SetWrap(true).
 		SetWordWrap(true)
-	tv.SetBackgroundColor(uitheme.Panel)
-	tv.SetTextColor(uitheme.Text)
-	uitheme.Paint(tv, "Help")
-
-	// Footer hint
-	hint := tview.NewTextView().
-		SetTextAlign(tview.AlignCenter).
-		SetDynamicColors(true).
-		SetText("[gray]↑↓ scroll  ·  Esc or Enter to close[::-]")
-	hint.SetBackgroundColor(uitheme.Panel)
-
-	frame := tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(tv, 0, 1, true).
-		AddItem(hint, 1, 0, false)
-
-	close := func() {
-		e.App.SetRoot(e.Root, true).SetFocus(e.View)
-	}
-
-	frame.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		switch event.Key() {
-		case tcell.KeyEscape, tcell.KeyEnter:
-			close()
-			return nil
-		}
-		if event.Rune() == 'q' || event.Rune() == 'Q' {
-			close()
-			return nil
-		}
-		return event
-	})
+	tv.SetBorder(true).
+		SetTitle(" GoWrite · ? or Esc closes ").
+		SetTitleAlign(tview.AlignCenter).
+		SetTitleColor(tcell.NewRGBColor(240, 208, 144)).
+		SetBorderColor(tcell.NewRGBColor(70, 160, 170)).
+		SetBackgroundColor(tcell.NewRGBColor(14, 17, 26))
 	tv.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		switch event.Key() {
 		case tcell.KeyEscape, tcell.KeyEnter:
-			close()
+			e.App.SetRoot(e.Root, true).SetFocus(e.View)
 			return nil
 		}
 		if event.Rune() == 'q' || event.Rune() == 'Q' {
-			close()
+			e.App.SetRoot(e.Root, true).SetFocus(e.View)
 			return nil
 		}
 		return event
 	})
 
-	// Centered panel that fits typical terminals without going off-screen
-	pages := tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(nil, 0, 1, false).
-		AddItem(tview.NewFlex().
-			AddItem(nil, 0, 1, false).
-			AddItem(frame, 64, 0, true).
-			AddItem(nil, 0, 1, false), 0, 3, true).
-		AddItem(nil, 0, 1, false)
-	pages.SetBackgroundColor(uitheme.Ink)
-
-	e.App.SetRoot(pages, true).SetFocus(tv)
+	e.App.SetRoot(tv, true).SetFocus(tv)
 }
 
 func (e *Editor) newDocument() {
-	if e.Doc.Dirty {
+	if e.Doc.IsDirty() {
 		modal := tview.NewModal().
 			SetText("Current document has unsaved changes.\nDiscard and create a new one?").
 			AddButtons([]string{"Discard", "Cancel"}).
@@ -635,10 +571,27 @@ func (e *Editor) newDocument() {
 }
 
 func (e *Editor) saveDocument() {
-	e.Doc.Dirty = false
-	e.refreshTitle()
+	filename := e.Doc.GetFilename()
+	if filename == "" {
+		e.showSaveAsDialog()
+		return
+	}
+	e.saveToFile(filename)
+}
+
+func (e *Editor) saveToFile(filename string) {
+	data := []byte(e.Doc.Text())
+	if err := os.WriteFile(filename, data, 0o644); err != nil {
+		ShowErrorModal(e.App, e.Root, fmt.Sprintf("Could not save %s: %v", filename, err))
+		return
+	}
+	e.Doc.SetFilename(filename)
+	e.Doc.SetTitle(filepath.Base(filename))
+	e.Doc.SetDirty(false)
+	e.redraw()
+
 	modal := tview.NewModal().
-		SetText("Save is not fully wired yet.\n(Document marked clean for now)").
+		SetText(fmt.Sprintf("Saved to %s", utils.PrettyPath(filename, "save"))).
 		AddButtons([]string{"OK"}).
 		SetDoneFunc(func(buttonIndex int, buttonLabel string) {
 			e.App.SetRoot(e.Root, true).SetFocus(e.View)
@@ -647,66 +600,33 @@ func (e *Editor) saveDocument() {
 	e.App.SetRoot(modal, true).SetFocus(modal)
 }
 
-func (e *Editor) openDocument() {
-	modal := tview.NewModal().
-		SetText("Open dialog will appear here\nin the next iteration.").
-		AddButtons([]string{"OK"}).
-		SetDoneFunc(func(buttonIndex int, buttonLabel string) {
-			e.App.SetRoot(e.Root, true).SetFocus(e.View)
-		})
-	uitheme.StyleModal(modal, "Open")
-	e.App.SetRoot(modal, true).SetFocus(modal)
-}
+func (e *Editor) showSaveAsDialog() {
+	form := tview.NewForm()
+	uitheme.StyleForm(form, "Save As")
 
-
-// ---------- Colour picker ----------
-
-func (e *Editor) showColorPicker(background bool) {
-	title := "Text colour"
-	if background {
-		title = "Background colour"
+	defaultName := e.Doc.GetTitle()
+	if defaultName == "" || defaultName == "Untitled" {
+		defaultName = "untitled.txt"
+	} else if !strings.Contains(defaultName, ".") {
+		defaultName += ".txt"
 	}
-	list := tview.NewList()
-	uitheme.StyleList(list, title)
-	list.SetBorder(true)
+	field := tview.NewInputField().
+		SetLabel("Filename ").
+		SetText(defaultName).
+		SetFieldWidth(34)
+	form.AddFormItem(field)
 
-	fg, bg := e.Doc.ActiveColors()
-	current := fg
-	if background {
-		current = bg
-	}
-
-	for _, c := range document.ColorPalette {
-		name := c.Name
-		val := c.Value
-		label := name
-		if val == current {
-			label = name + "  ←"
+	form.AddButton("Save", func() {
+		name := strings.TrimSpace(field.GetText())
+		if name == "" {
+			return
 		}
-		// Preview colour in secondary text when possible
-		sec := val
-		if val == "" {
-			sec = "(terminal default)"
-		}
-		v := val // capture
-		list.AddItem(label, sec, 0, func() {
-			// With a selection, recolour it; otherwise set the typing colour.
-			if !e.Doc.SetSelectionColor(background, v) {
-				if background {
-					e.Doc.SetActiveBg(v)
-				} else {
-					e.Doc.SetActiveFg(v)
-				}
-			}
-			e.redraw()
-			e.App.SetRoot(e.Root, true).SetFocus(e.View)
-		})
-	}
-	list.AddItem("Close", "Esc", 'q', func() {
+		e.saveToFile(name)
+	})
+	form.AddButton("Cancel", func() {
 		e.App.SetRoot(e.Root, true).SetFocus(e.View)
 	})
-
-	list.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+	form.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() == tcell.KeyEscape {
 			e.App.SetRoot(e.Root, true).SetFocus(e.View)
 			return nil
@@ -714,15 +634,197 @@ func (e *Editor) showColorPicker(background bool) {
 		return event
 	})
 
-	pages := tview.NewFlex().SetDirection(tview.FlexRow).
+	e.App.SetRoot(centredModal(form, 54, 9), true).SetFocus(form)
+}
+
+// OpenDocument is the public entry point used by main after the start menu.
+func (e *Editor) OpenDocument() {
+	e.openDocument()
+}
+
+func (e *Editor) openDocument() {
+	form := tview.NewForm()
+	uitheme.StyleForm(form, "Open")
+
+	field := tview.NewInputField().
+		SetLabel("Filename ").
+		SetFieldWidth(34)
+	form.AddFormItem(field)
+
+	form.AddButton("Open", func() {
+		name := strings.TrimSpace(field.GetText())
+		if name == "" {
+			return
+		}
+		data, err := os.ReadFile(name)
+		if err != nil {
+			ShowErrorModal(e.App, e.Root, fmt.Sprintf("Could not open %s: %v", name, err))
+			return
+		}
+		text := strings.ReplaceAll(string(data), "\r\n", "\n")
+		text = strings.ReplaceAll(text, "\r", "\n")
+		e.Doc.LoadText(text)
+		e.Doc.SetFilename(name)
+		e.Doc.SetTitle(filepath.Base(name))
+		e.redraw()
+		e.App.SetRoot(e.Root, true).SetFocus(e.View)
+	})
+	form.AddButton("Cancel", func() {
+		e.App.SetRoot(e.Root, true).SetFocus(e.View)
+	})
+	form.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Key() == tcell.KeyEscape {
+			e.App.SetRoot(e.Root, true).SetFocus(e.View)
+			return nil
+		}
+		return event
+	})
+
+	e.App.SetRoot(centredModal(form, 54, 9), true).SetFocus(form)
+}
+
+// ---------- Colour picker ----------
+
+func parseHexColor(s string) tcell.Color {
+	if len(s) != 7 || s[0] != '#' {
+		return tcell.ColorDefault
+	}
+	var r, g, b int
+	if _, err := fmt.Sscanf(s, "#%02x%02x%02x", &r, &g, &b); err != nil {
+		return tcell.ColorDefault
+	}
+	return tcell.NewRGBColor(int32(r), int32(g), int32(b))
+}
+
+func contrastColor(c tcell.Color) tcell.Color {
+	r, g, b := c.RGB()
+	lum := 0.299*float64(r) + 0.587*float64(g) + 0.114*float64(b)
+	if lum > 140 {
+		return tcell.ColorBlack
+	}
+	return tcell.ColorWhite
+}
+
+func (e *Editor) showColorPicker(background bool) {
+	title := "Text Colour"
+	if background {
+		title = "Background Colour"
+	}
+
+	palette := document.ColorPalette
+	const cols = 5
+
+	fg, bg := e.Doc.ActiveColors()
+	current := fg
+	if background {
+		current = bg
+	}
+
+	table := tview.NewTable().
+		SetBorders(false).
+		SetSelectable(true, true)
+
+	selectedRow, selectedCol := 0, 0
+	for i, c := range palette {
+		row, col := i/cols, i%cols
+		label := c.Name
+		if c.Value == current {
+			label = "* " + c.Name
+			selectedRow, selectedCol = row, col
+		}
+		cell := tview.NewTableCell(" " + label + " ").
+			SetAlign(tview.AlignCenter).
+			SetExpansion(1)
+		if c.Value == "" {
+			cell.SetBackgroundColor(uitheme.Field)
+			cell.SetTextColor(uitheme.Text)
+		} else {
+			rgb := parseHexColor(c.Value)
+			cell.SetBackgroundColor(rgb)
+			cell.SetTextColor(contrastColor(rgb))
+		}
+		table.SetCell(row, col, cell)
+	}
+	table.Select(selectedRow, selectedCol)
+
+	preview := tview.NewTextView().
+		SetDynamicColors(true).
+		SetTextAlign(tview.AlignCenter)
+	preview.SetBackgroundColor(uitheme.Panel)
+
+	updatePreview := func() {
+		row, col := table.GetSelection()
+		idx := row*cols + col
+		if idx < 0 || idx >= len(palette) {
+			preview.SetText("")
+			return
+		}
+		c := palette[idx]
+		if c.Value == "" {
+			preview.SetText(" [gray](terminal default)[-]")
+			return
+		}
+		preview.SetText(fmt.Sprintf(" [#%s]███[::-]  %s  [gray]%s[-]",
+			strings.TrimPrefix(c.Value, "#"), c.Name, c.Value))
+	}
+	updatePreview()
+	table.SetSelectionChangedFunc(func(row, col int) { updatePreview() })
+
+	apply := func() {
+		row, col := table.GetSelection()
+		idx := row*cols + col
+		if idx < 0 || idx >= len(palette) {
+			return
+		}
+		c := palette[idx]
+		if !e.Doc.SetSelectionColor(background, c.Value) {
+			if background {
+				e.Doc.SetActiveBg(c.Value)
+			} else {
+				e.Doc.SetActiveFg(c.Value)
+			}
+		}
+		e.redraw()
+		e.App.SetRoot(e.Root, true).SetFocus(e.View)
+	}
+	table.SetSelectedFunc(func(row, col int) { apply() })
+	table.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Key() == tcell.KeyEscape {
+			e.App.SetRoot(e.Root, true).SetFocus(e.View)
+			return nil
+		}
+		if event.Rune() == 'q' || event.Rune() == 'Q' {
+			e.App.SetRoot(e.Root, true).SetFocus(e.View)
+			return nil
+		}
+		return event
+	})
+
+	hint := tview.NewTextView().
+		SetDynamicColors(true).
+		SetTextAlign(tview.AlignCenter).
+		SetText("[gray]arrows move · Enter applies · Esc closes[::-]")
+	hint.SetBackgroundColor(uitheme.Panel)
+
+	body := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(table, 0, 1, true).
+		AddItem(preview, 1, 0, false).
+		AddItem(hint, 1, 0, false)
+	uitheme.Paint(body, title)
+
+	e.App.SetRoot(centredModal(body, 62, 12), true).SetFocus(table)
+}
+
+// centredModal wraps a primitive in a hollow Flex so it appears as a centred
+// box of the requested width and height.
+func centredModal(p tview.Primitive, width, height int) tview.Primitive {
+	return tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(nil, 0, 1, false).
 		AddItem(tview.NewFlex().
 			AddItem(nil, 0, 1, false).
-			AddItem(list, 40, 0, true).
-			AddItem(nil, 0, 1, false), 16, 0, true).
+			AddItem(p, width, 0, true).
+			AddItem(nil, 0, 1, false), height, 0, true).
 		AddItem(nil, 0, 1, false)
-
-	e.App.SetRoot(pages, true).SetFocus(list)
 }
 
 // ---------- Go to line ----------
@@ -740,6 +842,7 @@ func (e *Editor) showGoToDialog() {
 	form.AddButton("Go", func() {
 		n, err := strconv.Atoi(strings.TrimSpace(lineField.GetText()))
 		if err != nil || n < 1 {
+			ShowErrorModal(e.App, e.Root, "Invalid line number")
 			return
 		}
 		e.Doc.GoToLine(n)
@@ -749,7 +852,6 @@ func (e *Editor) showGoToDialog() {
 	form.AddButton("Cancel", func() {
 		e.App.SetRoot(e.Root, true).SetFocus(e.View)
 	})
-
 	form.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() == tcell.KeyEscape {
 			e.App.SetRoot(e.Root, true).SetFocus(e.View)
@@ -758,15 +860,7 @@ func (e *Editor) showGoToDialog() {
 		return event
 	})
 
-	pages := tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(nil, 0, 1, false).
-		AddItem(tview.NewFlex().
-			AddItem(nil, 0, 1, false).
-			AddItem(form, 40, 0, true).
-			AddItem(nil, 0, 1, false), 9, 0, true).
-		AddItem(nil, 0, 1, false)
-
-	e.App.SetRoot(pages, true).SetFocus(form)
+	e.App.SetRoot(centredModal(form, 44, 7), true).SetFocus(form)
 }
 
 // ---------- Find / Replace ----------
@@ -779,28 +873,29 @@ func (e *Editor) showFindDialog(withReplace bool) {
 	}
 	uitheme.StyleForm(form, title)
 
+	lastQuery, lastCase, lastWhole := e.Doc.LastSearchQuery()
 	findField := tview.NewInputField().
 		SetLabel("Find what     ").
-		SetText(e.Doc.LastSearch).
-		SetFieldWidth(30)
+		SetText(lastQuery).
+		SetFieldWidth(28)
 	form.AddFormItem(findField)
 
 	var replaceField *tview.InputField
 	if withReplace {
 		replaceField = tview.NewInputField().
 			SetLabel("Replace with ").
-			SetFieldWidth(30)
+			SetFieldWidth(28)
 		form.AddFormItem(replaceField)
 	}
 
 	caseCheck := tview.NewCheckbox().
 		SetLabel("Case sensitive").
-		SetChecked(e.Doc.LastSearchCase)
+		SetChecked(lastCase)
 	form.AddFormItem(caseCheck)
 
 	wholeCheck := tview.NewCheckbox().
 		SetLabel("Whole word    ").
-		SetChecked(e.Doc.LastSearchWhole)
+		SetChecked(lastWhole)
 	form.AddFormItem(wholeCheck)
 
 	doFind := func(backwards bool) {
@@ -809,16 +904,17 @@ func (e *Editor) showFindDialog(withReplace bool) {
 			return
 		}
 		_, _, found := e.Doc.Find(q, caseCheck.IsChecked(), wholeCheck.IsChecked(), backwards)
-		e.redraw()
 		if !found {
-			e.flashStatus("Not found: " + q)
-		} else {
-			e.flashStatus(fmt.Sprintf("Found at line %d", e.Doc.CursorLine()))
+			ShowErrorModal(e.App, e.Root, "No matches found")
+			return
 		}
+		e.App.SetRoot(e.Root, true).SetFocus(e.View)
+		e.redraw()
+		e.flashStatus(fmt.Sprintf("Found at line %d", e.Doc.CursorLine()))
 	}
 
 	form.AddButton("Find Next", func() { doFind(false) })
-	form.AddButton("Find Prev", func() { doFind(true) })
+	form.AddButton("Find Previous", func() { doFind(true) })
 
 	if withReplace {
 		form.AddButton("Replace All", func() {
@@ -831,11 +927,25 @@ func (e *Editor) showFindDialog(withReplace bool) {
 				repl = replaceField.GetText()
 			}
 			n := e.Doc.ReplaceAll(q, repl, caseCheck.IsChecked(), wholeCheck.IsChecked())
+			if n == 0 {
+				ShowErrorModal(e.App, e.Root, "No matches found")
+				return
+			}
+			e.App.SetRoot(e.Root, true).SetFocus(e.View)
 			e.redraw()
 			e.flashStatus(fmt.Sprintf("Replaced %d occurrence(s)", n))
 		})
 	}
 
+	form.AddButton("Clear", func() {
+		findField.SetText("")
+		if replaceField != nil {
+			replaceField.SetText("")
+		}
+		caseCheck.SetChecked(false)
+		wholeCheck.SetChecked(false)
+		e.Doc.ClearLastSearch()
+	})
 	form.AddButton("Close", func() {
 		e.App.SetRoot(e.Root, true).SetFocus(e.View)
 	})
@@ -852,27 +962,20 @@ func (e *Editor) showFindDialog(withReplace bool) {
 		return event
 	})
 
-	height := 12
+	w, h := 54, 10
 	if withReplace {
-		height = 14
+		h = 12
 	}
-	pages := tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(nil, 0, 1, false).
-		AddItem(tview.NewFlex().
-			AddItem(nil, 0, 1, false).
-			AddItem(form, 50, 0, true).
-			AddItem(nil, 0, 1, false), height, 0, true).
-		AddItem(nil, 0, 1, false)
-
-	e.App.SetRoot(pages, true).SetFocus(form)
+	e.App.SetRoot(centredModal(form, w, h), true).SetFocus(form)
 }
 
 func (e *Editor) findNext(backwards bool) {
-	if e.Doc.LastSearch == "" {
+	q, cs, ww := e.Doc.LastSearchQuery()
+	if q == "" {
 		e.showFindDialog(false)
 		return
 	}
-	_, _, found := e.Doc.Find(e.Doc.LastSearch, e.Doc.LastSearchCase, e.Doc.LastSearchWhole, backwards)
+	_, _, found := e.Doc.Find(q, cs, ww, backwards)
 	e.redraw()
 	if !found {
 		e.flashStatus("No more matches")
@@ -882,7 +985,16 @@ func (e *Editor) findNext(backwards bool) {
 }
 
 func (e *Editor) flashStatus(msg string) {
+	e.flashSeq++
+	seq := e.flashSeq
 	e.Status.SetText(fmt.Sprintf(" [yellow]%s[::-]", msg))
+	time.AfterFunc(3*time.Second, func() {
+		e.App.QueueUpdateDraw(func() {
+			if seq == e.flashSeq {
+				e.refreshStatus()
+			}
+		})
+	})
 }
 
 // Mount sets the editor as the application root and focuses the view.

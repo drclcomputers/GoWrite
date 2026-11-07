@@ -9,17 +9,18 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"gowrite/internal/services/document"
 	"gowrite/internal/services/ui"
 	"log"
 	"os"
+	"path/filepath"
 	"runtime/debug"
+	"strings"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
-
-	"flag"
 )
 
 func main() {
@@ -32,7 +33,7 @@ func main() {
 		}
 	}()
 
-	// Global Ctrl+C handler – same spirit as GoSheet
+	// Global Ctrl+C handler
 	app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() == tcell.KeyCtrlC {
 			modal := tview.NewModal().
@@ -56,15 +57,23 @@ func main() {
 	}
 
 	var doc *document.Document
+	startChoice := ui.StartNew
 
 	if filename != "" {
+		data, err := os.ReadFile(filename)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Could not open %s: %v\n", filename, err)
+			os.Exit(1)
+		}
+		text := strings.ReplaceAll(string(data), "\r\n", "\n")
+		text = strings.ReplaceAll(text, "\r", "\n")
 		doc = document.New()
-		doc.Filename = filename
-		doc.Title = filename
-		// Real file loading comes in the next layer
+		doc.LoadText(text)
+		doc.SetFilename(filename)
+		doc.SetTitle(filepath.Base(filename))
 	} else {
-		choice := ui.StartMenuUI(app)
-		switch choice {
+		startChoice = ui.StartMenuUI(app)
+		switch startChoice {
 		case ui.StartQuit:
 			return
 		case ui.StartOpen:
@@ -80,24 +89,12 @@ func main() {
 		return
 	}
 
-	// Rebuild the application after the start-menu Run() finished
-	app = tview.NewApplication()
-	app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		if event.Key() == tcell.KeyCtrlC {
-			modal := tview.NewModal().
-				SetText("Ctrl+C detected. Exiting...\nUnsaved edits will be lost.").
-				AddButtons([]string{"OK"}).
-				SetDoneFunc(func(buttonIndex int, buttonLabel string) {
-					app.Stop()
-				})
-			app.SetRoot(modal, true).SetFocus(modal)
-			return nil
-		}
-		return event
-	})
-
 	editor := ui.NewEditor(app, doc)
 	editor.Mount()
+
+	if startChoice == ui.StartOpen {
+		editor.OpenDocument()
+	}
 
 	if err := app.Run(); err != nil {
 		log.Fatal(err)

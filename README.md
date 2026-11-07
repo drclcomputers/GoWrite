@@ -18,7 +18,6 @@ Same DNA as [GoSheet](https://github.com/drclcomputers/GoSheet) — tview, dark 
 ## Overview
 
 GoWrite is a lightweight, terminal-native word processor.
-It reuses the visual language, structure and conventions of GoSheet so the two apps feel like siblings.
 
 ### Current status (v0.2.0)
 
@@ -112,15 +111,7 @@ gowrite/
 │   ├── services/
 │   │   ├── document/     # paragraphs + styled runs + find/replace
 │   │   ├── ui/           # editor, start menu, dialogs
-│   │   └── uitheme/      # shared colours & styling (identical to GoSheet)
+│   │   └── uitheme/      # shared colours & styling
 │   └── utils/
 └── README.md
 ```
-
-The theme package (`uitheme`) is deliberately kept in sync with GoSheet so dialogs, lists and modals look identical.
-
----
-
-## License
-
-MIT – same as GoSheet.

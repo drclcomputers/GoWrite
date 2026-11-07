@@ -54,8 +54,6 @@ const (
 	StartQuit
 )
 
-// StartMenuUI shows the same style of splash screen as GoSheet.
-// Returns the user's choice.
 func StartMenuUI(app *tview.Application) StartMenuResult {
 	result := StartQuit
 

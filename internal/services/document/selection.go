@@ -1,4 +1,4 @@
-// Copyright (c) 2025 @drclcomputers. All rights reserved.
+// Copyright (c) 2026 @drclcomputers. All rights reserved.
 //
 // This work is licensed under the terms of the MIT license.
 // For a copy, see <https://opensource.org/licenses/MIT>.
@@ -352,6 +352,10 @@ func (d *Document) DeleteSelection() bool {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.ensureCursor()
+	if _, _, _, _, ok := d.selectionRange(); !ok {
+		return false
+	}
+	d.pushHistory()
 	return d.deleteSelectionLocked()
 }
 
@@ -382,6 +386,7 @@ func (d *Document) Cut() bool {
 	if len(ps) == 0 {
 		return false
 	}
+	d.pushHistory()
 	setClip(ps)
 	d.deleteSelectionLocked()
 	return true
@@ -397,6 +402,7 @@ func (d *Document) Paste() bool {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.ensureCursor()
+	d.pushHistory()
 	d.deleteSelectionLocked()
 
 	left, right := d.splitParaAtCursor()
@@ -433,9 +439,7 @@ func (d *Document) Paste() bool {
 // Formatting the selection
 // ---------------------------------------------------------------------------
 
-// ToggleStyleOnSelection toggles a style on the selected text: if all of it
-// already has the style it is removed, otherwise it is added to all of it.
-// It reports whether there was a selection (if not, nothing happens).
+// ToggleStyleOnSelection toggles a style on the selected text.
 func (d *Document) ToggleStyleOnSelection(s Style) bool {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -443,6 +447,7 @@ func (d *Document) ToggleStyleOnSelection(s Style) bool {
 	if _, _, _, _, ok := d.selectionRange(); !ok {
 		return false
 	}
+	d.pushHistory()
 	all := true
 	d.forEachSelected(func(pi, from, to int) {
 		for _, r := range sliceRuns(d.Paragraphs[pi].Runs, from, to) {
@@ -465,13 +470,16 @@ func (d *Document) ToggleStyleOnSelection(s Style) bool {
 }
 
 // SetSelectionColor sets the text (or background) colour of the selected
-// text. An empty value restores the terminal default. It reports whether
-// there was a selection.
+// text. An empty value restores the terminal default.
 func (d *Document) SetSelectionColor(background bool, value string) bool {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.ensureCursor()
-	if !d.forEachSelected(func(pi, from, to int) {
+	if _, _, _, _, ok := d.selectionRange(); !ok {
+		return false
+	}
+	d.pushHistory()
+	d.forEachSelected(func(pi, from, to int) {
 		d.restyleRange(pi, from, to, func(r *Run) {
 			if background {
 				r.Bg = value
@@ -479,21 +487,24 @@ func (d *Document) SetSelectionColor(background bool, value string) bool {
 				r.Fg = value
 			}
 		})
-	}) {
-		return false
-	}
+	})
 	d.Dirty = true
 	return true
 }
 
-// ApplyActiveToSelection applies the active typing style and colours to the
-// selected text. It reports whether there was a selection.
+
+/// ApplyActiveToSelection applies the active typing style and colours to the
+// selected text.
 func (d *Document) ApplyActiveToSelection() bool {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.ensureCursor()
+	if _, _, _, _, ok := d.selectionRange(); !ok {
+		return false
+	}
+	d.pushHistory()
 	style, fg, bg := d.ActiveStyle, d.ActiveFg, d.ActiveBg
-	if !d.forEachSelected(func(pi, from, to int) {
+	d.forEachSelected(func(pi, from, to int) {
 		d.restyleRange(pi, from, to, func(r *Run) {
 			r.Style |= style
 			if fg != "" {
@@ -503,9 +514,7 @@ func (d *Document) ApplyActiveToSelection() bool {
 				r.Bg = bg
 			}
 		})
-	}) {
-		return false
-	}
+	})
 	d.Dirty = true
 	return true
 }

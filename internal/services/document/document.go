@@ -1,4 +1,4 @@
-// Copyright (c) 2025 @drclcomputers. All rights reserved.
+// Copyright (c) 2026 @drclcomputers. All rights reserved.
 //
 // This work is licensed under the terms of the MIT license.
 // For a copy, see <https://opensource.org/licenses/MIT>.
@@ -85,25 +85,55 @@ type Document struct {
 	LastSearch      string
 	LastSearchCase  bool
 	LastSearchWhole bool
+
+	// Undo / redo stacks (see history.go).
+	history []historyEntry
+	redo    []historyEntry
 }
 
-// Named palette (shared by UI colour pickers).
+// ColorPalette is the shared swatch list used by the fg/bg colour pickers.
+// Value is a tview tag value: "" means "terminal default", otherwise "#rrggbb".
 var ColorPalette = []struct {
 	Name  string
-	Value string // tview tag value
+	Value string
 }{
 	{"Default", ""},
-	{"White", "#e8ecf4"},
-	{"Gray", "#8a94a6"},
-	{"Red", "#e06c75"},
-	{"Orange", "#d19a66"},
-	{"Yellow", "#f0d090"},
-	{"Green", "#5ab48c"},
-	{"Cyan", "#56b6c2"},
-	{"Blue", "#61afef"},
-	{"Purple", "#c678dd"},
-	{"Pink", "#e060a0"},
+	// Neutrals
 	{"Black", "#0e111a"},
+	{"DkGray", "#3a4252"},
+	{"Gray", "#8a94a6"},
+	{"LtGray", "#b8c0cc"},
+	{"White", "#e8ecf4"},
+	// Reds / pinks
+	{"DkRed", "#8b2f3a"},
+	{"Red", "#e06c75"},
+	{"Rose", "#e060a0"},
+	{"Pink", "#f5a3c7"},
+	// Oranges / yellows
+	{"Orange", "#d19a66"},
+	{"Amber", "#e8a86b"},
+	{"Yellow", "#f0d090"},
+	{"Cream", "#f5e6c8"},
+	// Greens
+	{"DkGreen", "#2f6b4f"},
+	{"Green", "#5ab48c"},
+	{"Mint", "#a3e0c0"},
+	// Teals / cyans
+	{"Teal", "#2f8b94"},
+	{"Cyan", "#56b6c2"},
+	{"LtCyan", "#a8d4dc"},
+	// Blues
+	{"Navy", "#2a3a6a"},
+	{"Blue", "#61afef"},
+	{"Sky", "#a3c8f0"},
+	// Purples
+	{"DkPurple", "#5a3a7a"},
+	{"Purple", "#c678dd"},
+	{"Violet", "#e0a3f0"},
+	// Accents
+	{"Olive", "#a3a83a"},
+	{"Brown", "#8b6a4a"},
+	{"Gold", "#d4b04a"},
 }
 
 // New creates an empty document with one blank paragraph.
@@ -115,6 +145,55 @@ func New() *Document {
 		CursorOff:    0,
 		DisplayWidth: 72,
 	}
+}
+
+// SetDisplayWidth updates the editing surface width used for wrapping.
+func (d *Document) SetDisplayWidth(w int) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.DisplayWidth = w
+}
+
+// IsDirty reports whether the document has unsaved changes.
+func (d *Document) IsDirty() bool {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	return d.Dirty
+}
+
+// SetDirty marks the document as saved (false) or modified (true).
+func (d *Document) SetDirty(v bool) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.Dirty = v
+}
+
+// SetTitle changes the document title.
+func (d *Document) SetTitle(s string) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.Title = s
+}
+
+// GetTitle returns the document title.
+func (d *Document) GetTitle() string {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	return d.Title
+}
+
+// SetFilename changes the backing file.
+func (d *Document) SetFilename(s string) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.Filename = s
+}
+
+// GetFilename returns the backing file, or "".
+func (d *Document) GetFilename() string {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	return d.Filename
 }
 
 // plainOf returns the plain (style-stripped) text of a paragraph.
@@ -201,6 +280,10 @@ func decorateRunText(text string, style Style) string {
 
 // SetText replaces the entire content with plain text (no styles).
 func (d *Document) SetText(s string) {
+	// Normalise CRLF and stray CR so the layout only ever sees \n.
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+	s = strings.ReplaceAll(s, "\r", "\n")
+
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if s == "" {
@@ -215,7 +298,17 @@ func (d *Document) SetText(s string) {
 	d.CursorPara = 0
 	d.CursorOff = 0
 	d.hasAnchor = false
+	d.goalSet = false
+	d.history = nil
+	d.redo = nil
 	d.Dirty = true
+}
+
+// LoadText replaces the content with s and marks the document clean. It is
+// used when opening a file.
+func (d *Document) LoadText(s string) {
+	d.SetText(s)
+	d.SetDirty(false)
 }
 
 // CurrentPlain returns the plain text of the paragraph under the cursor.
@@ -253,6 +346,7 @@ func (d *Document) InsertRune(r rune) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.ensureCursor()
+	d.pushHistory()
 	d.deleteSelectionLocked() // typing over a selection replaces it
 
 	if r == '\n' {
@@ -343,12 +437,10 @@ func (d *Document) splitParaAtCursor() (left, right Paragraph) {
 			if len(rightRuns) == 0 {
 				rightRuns = []Run{{Text: "", Style: StyleNone}}
 			}
-			// Both sides inherit paragraph alignment
 			return Paragraph{Runs: leftRuns, Align: p.Align}, Paragraph{Runs: rightRuns, Align: p.Align}
 		}
 		pos += runLen
 	}
-	// Cursor at end
 	return p, Paragraph{Runs: []Run{{Text: "", Style: StyleNone}}, Align: p.Align}
 }
 
@@ -357,6 +449,11 @@ func (d *Document) Backspace() {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.ensureCursor()
+	hasSel := d.hasAnchor && (d.anchorPara != d.CursorPara || d.anchorOff != d.CursorOff)
+	if !hasSel && d.CursorPara == 0 && d.CursorOff == 0 {
+		return
+	}
+	d.pushHistory()
 	if d.deleteSelectionLocked() {
 		return
 	}
@@ -372,7 +469,6 @@ func (d *Document) Backspace() {
 		return
 	}
 	prevPlain := plainOf(d.Paragraphs[d.CursorPara-1])
-	// Append current runs to previous
 	d.Paragraphs[d.CursorPara-1].Runs = append(d.Paragraphs[d.CursorPara-1].Runs, d.Paragraphs[d.CursorPara].Runs...)
 	d.Paragraphs = append(d.Paragraphs[:d.CursorPara], d.Paragraphs[d.CursorPara+1:]...)
 	d.CursorPara--
@@ -385,18 +481,25 @@ func (d *Document) Delete() {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.ensureCursor()
+	hasSel := d.hasAnchor && (d.anchorPara != d.CursorPara || d.anchorOff != d.CursorOff)
+	plain := []rune(plainOf(d.Paragraphs[d.CursorPara]))
+	hasCharAfter := d.CursorOff < len(plain)
+	hasParaAfter := d.CursorPara+1 < len(d.Paragraphs)
+	if !hasSel && !hasCharAfter && !hasParaAfter {
+		return
+	}
+	d.pushHistory()
 	if d.deleteSelectionLocked() {
 		return
 	}
 
-	plain := []rune(plainOf(d.Paragraphs[d.CursorPara]))
-	if d.CursorOff < len(plain) {
+	if hasCharAfter {
 		d.deleteRange(d.CursorOff, d.CursorOff+1)
 		d.Dirty = true
 		return
 	}
 	// Merge with next
-	if d.CursorPara+1 >= len(d.Paragraphs) {
+	if !hasParaAfter {
 		return
 	}
 	d.Paragraphs[d.CursorPara].Runs = append(d.Paragraphs[d.CursorPara].Runs, d.Paragraphs[d.CursorPara+1].Runs...)
@@ -407,7 +510,6 @@ func (d *Document) Delete() {
 // deleteRange removes runes [from, to) in the current paragraph. Caller holds lock.
 func (d *Document) deleteRange(from, to int) {
 	p := &d.Paragraphs[d.CursorPara]
-	// Rebuild runs without the deleted range
 	var newRuns []Run
 	pos := 0
 	for _, run := range p.Runs {
@@ -417,13 +519,11 @@ func (d *Document) deleteRange(from, to int) {
 		pos = runEnd
 
 		if runEnd <= from || runStart >= to {
-			// Fully outside
 			if run.Text != "" {
 				newRuns = append(newRuns, run)
 			}
 			continue
 		}
-		// Partial overlap
 		keepLeft := from - runStart
 		if keepLeft < 0 {
 			keepLeft = 0
@@ -432,8 +532,6 @@ func (d *Document) deleteRange(from, to int) {
 		if keepRight > runLen {
 			keepRight = runLen
 		}
-		// What is left of this run is the text before and after the deleted
-		// range. It keeps the run's style AND colours.
 		if rest := string(runes[:keepLeft]) + string(runes[keepRight:]); rest != "" {
 			kept := run
 			kept.Text = rest
@@ -493,11 +591,9 @@ func (d *Document) MoveWordLeft() {
 		return
 	}
 	i := d.CursorOff - 1
-	// Skip whitespace
 	for i > 0 && unicode.IsSpace(plain[i]) {
 		i--
 	}
-	// Skip word chars
 	for i > 0 && !unicode.IsSpace(plain[i-1]) {
 		i--
 	}
@@ -520,11 +616,9 @@ func (d *Document) MoveWordRight() {
 		return
 	}
 	i := d.CursorOff
-	// Skip current word
 	for i < n && !unicode.IsSpace(plain[i]) {
 		i++
 	}
-	// Skip whitespace
 	for i < n && unicode.IsSpace(plain[i]) {
 		i++
 	}
@@ -568,12 +662,12 @@ func (d *Document) ActiveStyleFlags() Style {
 	return d.ActiveStyle
 }
 
-// ApplyStyleToSelection applies style to a plain-text range within the current paragraph.
-// For simplicity we apply to the whole current paragraph when no finer selection exists.
+// ApplyStyleToParagraph applies style to the whole current paragraph.
 func (d *Document) ApplyStyleToParagraph(style Style, on bool) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.ensureCursor()
+	d.pushHistory()
 	p := &d.Paragraphs[d.CursorPara]
 	for i := range p.Runs {
 		if on {
@@ -585,76 +679,126 @@ func (d *Document) ApplyStyleToParagraph(style Style, on bool) {
 	d.Dirty = true
 }
 
+// LastSearchQuery returns the last search term and options.
+func (d *Document) LastSearchQuery() (query string, caseSensitive, wholeWord bool) {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	return d.LastSearch, d.LastSearchCase, d.LastSearchWhole
+}
+
+// ClearLastSearch forgets the last search term.
+func (d *Document) ClearLastSearch() {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.LastSearch = ""
+	d.LastSearchCase = false
+	d.LastSearchWhole = false
+}
+
 // Find searches for the next occurrence of query starting after the cursor.
-// Returns (paraIndex, runeOffset, found).
+// It wraps around at the end (or beginning) of the document.
 func (d *Document) Find(query string, caseSensitive, wholeWord, backwards bool) (int, int, bool) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	d.ensureCursor()
 	if query == "" {
 		return d.CursorPara, d.CursorOff, false
 	}
 	d.hasAnchor = false
+	d.goalSet = false
 	d.LastSearch = query
 	d.LastSearchCase = caseSensitive
 	d.LastSearchWhole = wholeWord
 
-	cmp := query
+	qrunes := []rune(query)
 	if !caseSensitive {
-		cmp = strings.ToLower(query)
+		for i, r := range qrunes {
+			qrunes[i] = unicode.ToLower(r)
+		}
 	}
 
-	if backwards {
-		// Search from cursor backwards
-		for pi := d.CursorPara; pi >= 0; pi-- {
-			plain := plainOf(d.Paragraphs[pi])
-			searchIn := plain
-			if !caseSensitive {
-				searchIn = strings.ToLower(plain)
-			}
-			end := len([]rune(plain))
+	fold := func(pi int) []rune {
+		rs := []rune(plainOf(d.Paragraphs[pi]))
+		if caseSensitive {
+			return rs
+		}
+		for i, r := range rs {
+			rs[i] = unicode.ToLower(r)
+		}
+		return rs
+	}
+
+	n := len(d.Paragraphs)
+	if !backwards {
+		for pi := d.CursorPara; pi < n; pi++ {
+			start := 0
 			if pi == d.CursorPara {
-				end = d.CursorOff
-			}
-			// Search in runes space for correctness with multi-byte
-			runes := []rune(searchIn)
-			qrunes := []rune(cmp)
-			for i := end - len(qrunes); i >= 0; i-- {
-				if matchAt(runes, i, qrunes) && (!wholeWord || isWholeWord(runes, i, len(qrunes))) {
-					d.CursorPara = pi
-					d.CursorOff = i
-					return pi, i, true
+				start = d.CursorOff
+				if start < len([]rune(plainOf(d.Paragraphs[pi]))) {
+					start++
 				}
 			}
-		}
-		return d.CursorPara, d.CursorOff, false
-	}
-
-	// Forward
-	for pi := d.CursorPara; pi < len(d.Paragraphs); pi++ {
-		plain := plainOf(d.Paragraphs[pi])
-		searchIn := plain
-		if !caseSensitive {
-			searchIn = strings.ToLower(plain)
-		}
-		start := 0
-		if pi == d.CursorPara {
-			start = d.CursorOff
-			// Advance one so we don't re-find the same spot
-			if start < len([]rune(plain)) {
-				start++
+			if off, ok := findForward(fold(pi), start, qrunes, wholeWord); ok {
+				d.CursorPara, d.CursorOff = pi, off
+				return pi, off, true
 			}
 		}
-		runes := []rune(searchIn)
-		qrunes := []rune(cmp)
-		for i := start; i+len(qrunes) <= len(runes); i++ {
-			if matchAt(runes, i, qrunes) && (!wholeWord || isWholeWord(runes, i, len(qrunes))) {
-				d.CursorPara = pi
-				d.CursorOff = i
-				return pi, i, true
+		for pi := 0; pi <= d.CursorPara && pi < n; pi++ {
+			if off, ok := findForward(fold(pi), 0, qrunes, wholeWord); ok {
+				d.CursorPara, d.CursorOff = pi, off
+				return pi, off, true
+			}
+		}
+	} else {
+		for pi := d.CursorPara; pi >= 0; pi-- {
+			end := len([]rune(plainOf(d.Paragraphs[pi])))
+			if pi == d.CursorPara {
+				end = d.CursorOff - 1
+			}
+			if off, ok := findBackward(fold(pi), end, qrunes, wholeWord); ok {
+				d.CursorPara, d.CursorOff = pi, off
+				return pi, off, true
+			}
+		}
+		for pi := n - 1; pi >= d.CursorPara && pi >= 0; pi-- {
+			end := len([]rune(plainOf(d.Paragraphs[pi])))
+			if off, ok := findBackward(fold(pi), end, qrunes, wholeWord); ok {
+				d.CursorPara, d.CursorOff = pi, off
+				return pi, off, true
 			}
 		}
 	}
 	return d.CursorPara, d.CursorOff, false
+}
+
+func findForward(haystack []rune, start int, needle []rune, wholeWord bool) (int, bool) {
+	if len(needle) == 0 {
+		return 0, false
+	}
+	if start < 0 {
+		start = 0
+	}
+	for i := start; i+len(needle) <= len(haystack); i++ {
+		if matchAt(haystack, i, needle) && (!wholeWord || isWholeWord(haystack, i, len(needle))) {
+			return i, true
+		}
+	}
+	return 0, false
+}
+
+func findBackward(haystack []rune, end int, needle []rune, wholeWord bool) (int, bool) {
+	if len(needle) == 0 {
+		return 0, false
+	}
+	if end > len(haystack) {
+		end = len(haystack)
+	}
+	for i := end - len(needle); i >= 0; i-- {
+		if matchAt(haystack, i, needle) && (!wholeWord || isWholeWord(haystack, i, len(needle))) {
+			return i, true
+		}
+	}
+	return 0, false
 }
 
 func matchAt(haystack []rune, pos int, needle []rune) bool {
@@ -685,32 +829,41 @@ func isPunct(r rune) bool {
 }
 
 // ReplaceAll replaces every occurrence of old with new. Returns count.
+// Surrounding styles are preserved; the replacement itself takes the style
+// of the first character of each match.
 func (d *Document) ReplaceAll(old, new string, caseSensitive, wholeWord bool) int {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if old == "" {
 		return 0
 	}
-	count := 0
-	cmp := old
-	if !caseSensitive {
-		cmp = strings.ToLower(old)
-	}
-	qrunes := []rune(cmp)
-	newText := new
+	new = strings.ReplaceAll(new, "\r", "")
+	new = strings.ReplaceAll(new, "\n", " ")
 
-	for pi := range d.Paragraphs {
-		plain := plainOf(d.Paragraphs[pi])
-		searchIn := plain
-		if !caseSensitive {
-			searchIn = strings.ToLower(plain)
+	qrunes := []rune(old)
+	if !caseSensitive {
+		for i, r := range qrunes {
+			qrunes[i] = unicode.ToLower(r)
 		}
-		runes := []rune(searchIn)
-		// Collect replacement ranges (from the end so offsets stay valid)
+	}
+
+	d.pushHistory()
+
+	count := 0
+	for pi := range d.Paragraphs {
+		rs := []rune(plainOf(d.Paragraphs[pi]))
+		hay := rs
+		if !caseSensitive {
+			hay = make([]rune, len(rs))
+			for i, r := range rs {
+				hay[i] = unicode.ToLower(r)
+			}
+		}
+
 		type span struct{ from, to int }
 		var spans []span
-		for i := 0; i+len(qrunes) <= len(runes); i++ {
-			if matchAt(runes, i, qrunes) && (!wholeWord || isWholeWord(runes, i, len(qrunes))) {
+		for i := 0; i+len(qrunes) <= len(hay); i++ {
+			if matchAt(hay, i, qrunes) && (!wholeWord || isWholeWord(hay, i, len(qrunes))) {
 				spans = append(spans, span{i, i + len(qrunes)})
 				i += len(qrunes) - 1
 			}
@@ -718,26 +871,41 @@ func (d *Document) ReplaceAll(old, new string, caseSensitive, wholeWord bool) in
 		if len(spans) == 0 {
 			continue
 		}
-		// Rebuild plain text with replacements
-		origRunes := []rune(plain)
-		var b strings.Builder
+
+		var out []Run
 		prev := 0
 		for _, s := range spans {
-			b.WriteString(string(origRunes[prev:s.from]))
-			b.WriteString(newText)
+			out = append(out, sliceRuns(d.Paragraphs[pi].Runs, prev, s.from)...)
+			style, fg, bg := runStyleAt(d.Paragraphs[pi].Runs, s.from)
+			out = append(out, Run{Text: new, Style: style, Fg: fg, Bg: bg})
 			prev = s.to
 			count++
 		}
-		b.WriteString(string(origRunes[prev:]))
-		// For simplicity after replace we collapse to a single unstyled run
-		d.Paragraphs[pi] = Paragraph{Runs: []Run{{Text: b.String(), Style: StyleNone}}}
+		out = append(out, sliceRuns(d.Paragraphs[pi].Runs, prev, len(rs))...)
+		d.Paragraphs[pi].Runs = normalizeRuns(out)
 	}
 	if count > 0 {
 		d.hasAnchor = false
+		d.goalSet = false
 		d.Dirty = true
 		d.ensureCursor()
+	} else {
+		d.popHistory()
 	}
 	return count
+}
+
+// runStyleAt returns the style/colours of the run containing pos.
+func runStyleAt(runs []Run, pos int) (Style, string, string) {
+	p := 0
+	for _, r := range runs {
+		n := len([]rune(r.Text))
+		if pos < p+n {
+			return r.Style, r.Fg, r.Bg
+		}
+		p += n
+	}
+	return StyleNone, "", ""
 }
 
 // WordCount / CharCount / ParagraphCount
@@ -808,6 +976,7 @@ func (d *Document) SetParagraphAlign(a Align) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.ensureCursor()
+	d.pushHistory()
 	first, last := d.cursorParagraphs()
 	for i := first; i <= last; i++ {
 		d.Paragraphs[i].Align = a
