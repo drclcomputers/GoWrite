@@ -1,6 +1,8 @@
-// Package uitheme is the shared look of the dialogs: dark panels, a teal
-// border, amber titles. Screens that were restyled later should use this
-// instead of the old yellow, red, and green frames.
+// Copyright (c) 2026 @drclcomputers. All rights reserved.
+//
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT>.
+
 package uitheme
 
 import (

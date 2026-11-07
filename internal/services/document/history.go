@@ -5,11 +5,6 @@
 
 package document
 
-// Undo / redo support. Every mutating operation pushes a snapshot of the
-// paragraphs and cursor onto the history stack. Undo pops the most recent
-// snapshot and pushes the current state onto the redo stack; Redo does the
-// reverse. Cursor movements and selection changes do not touch the history.
-
 const maxHistory = 200
 
 // historyEntry is a snapshot of the paragraph model plus cursor.

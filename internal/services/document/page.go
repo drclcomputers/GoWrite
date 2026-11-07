@@ -1,7 +1,11 @@
-// Copyright (c) 2025 @drclcomputers. All rights reserved.
-// Licensed under the MIT license. See https://opensource.org/licenses/MIT.
+// Copyright (c) 2026 @drclcomputers. All rights reserved.
+//
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT>.
 
 package document
+
+import "math"
 
 // PageSize represents standard paper sizes.
 type PageSize string
@@ -12,9 +16,11 @@ const (
 	SizeA5     PageSize = "A5"
 	SizeLetter PageSize = "Letter"
 	SizeLegal  PageSize = "Legal"
+
+	colsPerMM = 100.0 / 210.0
+	rowsPerMM = 59.0 / 297.0
 )
 
-// Orientation is either portrait or landscape.
 type Orientation string
 
 const (
@@ -26,40 +32,42 @@ const (
 type PageSettings struct {
 	Size        PageSize
 	Orientation Orientation
-	Width       int // in terminal cells (excluding borders)
-	Height      int // in terminal cells
+	Width       int
+	Height      int
 }
 
 // DefaultA4Portrait returns the default settings.
 func DefaultA4Portrait() PageSettings {
+	w, h := GetDimensions(SizeA4, Portrait)
 	return PageSettings{
 		Size:        SizeA4,
 		Orientation: Portrait,
-		Width:       80,
-		Height:      45,
+		Width:       w,
+		Height:      h,
 	}
 }
 
 // GetDimensions returns the width and height based on size and orientation.
 func GetDimensions(size PageSize, orient Orientation) (int, int) {
-	var w, h int
+	var wmm, hmm float64
 	switch size {
 	case SizeA3:
-		w, h = 120, 70
+		wmm, hmm = 297, 420
 	case SizeA4:
-		w, h = 80, 50
+		wmm, hmm = 210, 297
 	case SizeA5:
-		w, h = 60, 35
+		wmm, hmm = 148, 210
 	case SizeLetter:
-		w, h = 80, 50
+		wmm, hmm = 215.9, 279.4
 	case SizeLegal:
-		w, h = 80, 55
-	default:
-		w, h = 80, 50
+		wmm, hmm = 215.9, 355.6
+	default: // A4
+		wmm, hmm = 210, 297
 	}
 
 	if orient == Landscape {
-		return h, w
+		wmm, hmm = hmm, wmm
 	}
-	return w, h
+
+	return int(math.Round(wmm * colsPerMM)), int(math.Round(hmm * rowsPerMM))
 }

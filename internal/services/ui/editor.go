@@ -1,5 +1,7 @@
-// Copyright (c) 2025 @drclcomputers. All rights reserved.
-// Licensed under the MIT license. See https://opensource.org/licenses/MIT.
+// Copyright (c) 2026 @drclcomputers. All rights reserved.
+//
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT>.
 
 package ui
 
@@ -28,7 +30,7 @@ type Editor struct {
 func NewEditor(app *tview.Application, doc *document.Document) *Editor {
 	e := &Editor{App: app, Doc: doc}
 
-	// Top Bar (Stats & Style)
+	// Top Bar
 	e.TopBar = tview.NewTextView().
 		SetDynamicColors(true).
 		SetTextAlign(tview.AlignLeft)
@@ -48,13 +50,16 @@ func NewEditor(app *tview.Application, doc *document.Document) *Editor {
 	e.View.SetTitleAlign(tview.AlignCenter)
 	e.View.SetTextColor(uitheme.Text)
 
+	// Start 1 row under the top border, stop 1 row above the bottom border
+	e.View.SetBorderPadding(1, 1, 0, 0)
+
 	// Status Bar
 	e.Status = tview.NewTextView().
 		SetDynamicColors(true).
 		SetTextAlign(tview.AlignLeft)
 	e.Status.SetBackgroundColor(uitheme.Panel)
 
-	// Layout: TopBar | View | Status
+	// Layout
 	e.Root = tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(e.TopBar, 1, 0, false).
 		AddItem(e.View, 0, 1, true).
@@ -87,7 +92,7 @@ func (e *Editor) redraw() {
 	if h > 0 {
 		row := e.Doc.CursorRow()
 		if row < top {
-			top = row
+			top = 0 // Prevent the page top border from being hidden under the window border
 		} else if row >= top+h {
 			top = row - h + 1
 		}
@@ -107,7 +112,6 @@ func (e *Editor) pageRows() int {
 	return h - 1
 }
 
-// refreshUI synchronizes the TopBar, Title, and StatusBar.
 func (e *Editor) refreshUI() {
 	name := e.Doc.GetTitle()
 	if fn := e.Doc.GetFilename(); fn != "" {
@@ -119,21 +123,20 @@ func (e *Editor) refreshUI() {
 		dirty = "●"
 	}
 
-	// Update View Title
 	e.View.SetTitle(fmt.Sprintf(" %s %s ", name, dirty))
 
-	// Update Top Bar
 	line := e.Doc.CursorLine()
 	col := e.Doc.CursorCol()
 	words := e.Doc.WordCount()
 	chars := e.Doc.CharCount()
 	style := e.Doc.StyleString()
+
 	e.TopBar.SetText(fmt.Sprintf(
 		" [#5ec8c8]Ln[::-] [#f0d090]%d[::-]  [#5ec8c8]Col[::-] [#f0d090]%d[::-]   [white]|[::-]   [#5ec8c8]Words:[::-] [#f0d090]%d[::-]  [#5ec8c8]Chars:[::-] [#f0d090]%d[::-]   [white]|[::-]   [#5ec8c8]Style[::-] [#ffffff]-[::-] [#f0d090]%s[::-]",
 		line, col, words, chars, style,
 	))
 
-	e.Status.SetText(" [#7dcea0]Document[::-]    [#8aa0b8]type[-] edit    [#f0d090]Alt+Enter[::-] [#ffffff]format[::-]    [#f0d090]Alt+S[::-] [#ffffff]save[::-]    [#f0d090]Alt+F[::-] [#ffffff]find[::-]    [#f0d090]?[::-] [#ffffff]help[::-]")
+	e.Status.SetText(" [#5ec8c8]Document[::-]    [#f0d090]Alt+Enter[::-] format    [#f0d090]Alt+P[::-] page setup    [#f0d090]Alt+S[::-] save    [#f0d090]Alt+F[::-] find    [#f0d090]?[::-] help")
 }
 
 func (e *Editor) Mount() {

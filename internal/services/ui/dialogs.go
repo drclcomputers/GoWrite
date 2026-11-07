@@ -1,5 +1,7 @@
-// Copyright (c) 2025 @drclcomputers. All rights reserved.
-// Licensed under the MIT license. See https://opensource.org/licenses/MIT.
+// Copyright (c) 2026 @drclcomputers. All rights reserved.
+//
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT>.
 
 package ui
 
