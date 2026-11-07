@@ -40,7 +40,7 @@ func expectCursor(t *testing.T, d *Document, para, off int) {
 	}
 }
 
-// The bug from before: deleting a character used to drop the run's colours.
+// Regression: deleting a character dropped the run's colours.
 func TestDeleteKeepsColours(t *testing.T) {
 	d := newTestDoc(40, "hello")
 	d.Paragraphs[0].Runs = []Run{{Text: "hello", Style: StyleBold, Fg: testRed, Bg: testBlue}}
@@ -241,8 +241,7 @@ func TestAlignAppliesToSelectedParagraphs(t *testing.T) {
 		t.Errorf("selection over two paragraphs: %v, want %v", got, want)
 	}
 
-	// A selection that only touches the start of the next paragraph (what
-	// Shift+Down from a line start gives) does not include that paragraph.
+	// A selection that only touches the next paragraph's start excludes it.
 	d = newTestDoc(40, "a", "b", "c")
 	selectRange(d, 0, 0, 1, 0)
 	d.SetParagraphAlign(AlignCenter)
@@ -340,8 +339,7 @@ func TestSelectionIsHighlighted(t *testing.T) {
 	}
 }
 
-// Highlighting, the caret and the selected paragraph-break marker must never
-// push a row past the view width.
+// Highlight, caret and paragraph-break marker must not push a row past the view width.
 func TestSelectionRenderNeverExceedsDisplayWidth(t *testing.T) {
 	paras := []string{"the quick brown fox jumps", "", "over the lazy dog", "aaaaaaaaaaaaaaaaaaaaaaaaa"}
 	for _, align := range []Align{AlignLeft, AlignCenter, AlignRight} {

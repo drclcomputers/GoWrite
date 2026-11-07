@@ -27,7 +27,7 @@ func (d *Document) Text() string {
 	return strings.Join(parts, "\n")
 }
 
-// AbsoluteCursorOffset returns the plain-text offset of the cursor from the start.
+// AbsoluteCursorOffset returns the cursor's plain-text offset.
 func (d *Document) AbsoluteCursorOffset() int {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
@@ -39,7 +39,7 @@ func (d *Document) AbsoluteCursorOffset() int {
 	return off
 }
 
-// SetText replaces the entire content with plain text (no styles).
+// SetText replaces the content with unstyled text.
 func (d *Document) SetText(s string) {
 	s = strings.ReplaceAll(s, "\r\n", "\n")
 	s = strings.ReplaceAll(s, "\r", "\n")

@@ -10,8 +10,7 @@ import (
 	"sync"
 )
 
-// The clipboard is shared by every document in the process, so copied text
-// survives File > New / Open. It keeps styles, colours and alignment.
+// The clipboard is shared process-wide, so it survives File > New / Open.
 var (
 	clipMu sync.Mutex
 	clip   []Paragraph
@@ -34,9 +33,7 @@ func getClip() []Paragraph {
 	return out
 }
 
-// ---------------------------------------------------------------------------
 // Run helpers
-// ---------------------------------------------------------------------------
 
 func runeLen(runs []Run) int {
 	n := 0
@@ -50,8 +47,7 @@ func cloneRuns(runs []Run) []Run {
 	return append([]Run(nil), runs...)
 }
 
-// normalizeRuns drops empty runs and merges neighbours that look the same.
-// It never returns an empty slice: an empty paragraph is one empty run.
+// normalizeRuns drops empty runs and merges look-alike neighbours; never returns nil.
 func normalizeRuns(runs []Run) []Run {
 	out := make([]Run, 0, len(runs))
 	for _, r := range runs {
@@ -90,8 +86,7 @@ func sliceRuns(runs []Run, from, to int) []Run {
 	return out
 }
 
-// restyleRange applies fn to the part of paragraph pi covering [from, to),
-// splitting runs at the edges and merging them back afterwards.
+// restyleRange applies fn to [from, to) of paragraph pi, splitting and re-merging runs.
 func (d *Document) restyleRange(pi, from, to int, fn func(*Run)) {
 	p := &d.Paragraphs[pi]
 	var out []Run
@@ -124,9 +119,7 @@ func (d *Document) restyleRange(pi, from, to int, fn func(*Run)) {
 	p.Runs = normalizeRuns(out)
 }
 
-// ---------------------------------------------------------------------------
 // Selection range
-// ---------------------------------------------------------------------------
 
 // clampPos forces (paragraph, offset) into the document.
 func (d *Document) clampPos(pi, off int) (int, int) {
@@ -146,8 +139,7 @@ func (d *Document) clampPos(pi, off int) (int, int) {
 	return pi, off
 }
 
-// selectionRange returns the selection as an ordered start and end position.
-// ok is false when nothing is selected. Caller holds the lock.
+// selectionRange returns the ordered selection; ok is false if none. Caller holds the lock.
 func (d *Document) selectionRange() (sp, so, ep, eo int, ok bool) {
 	if !d.hasAnchor || len(d.Paragraphs) == 0 {
 		return
@@ -163,8 +155,7 @@ func (d *Document) selectionRange() (sp, so, ep, eo int, ok bool) {
 	return ap, ao, cp, co, true
 }
 
-// forEachSelected calls fn for the non-empty part of every selected
-// paragraph. It reports whether there is a selection.
+// forEachSelected calls fn for the non-empty part of each selected paragraph.
 func (d *Document) forEachSelected(fn func(pi, from, to int)) bool {
 	sp, so, ep, eo, ok := d.selectionRange()
 	if !ok {
@@ -185,9 +176,8 @@ func (d *Document) forEachSelected(fn func(pi, from, to int)) bool {
 	return true
 }
 
-// cursorParagraphs is the paragraph range that paragraph-level commands
-// (alignment) apply to: the selected paragraphs, or just the cursor's. A
-// selection that ends at the very start of a paragraph does not include it.
+// cursorParagraphs is the paragraph range for paragraph-level commands (alignment).
+// A selection ending at a paragraph start excludes it.
 func (d *Document) cursorParagraphs() (first, last int) {
 	sp, _, ep, eo, ok := d.selectionRange()
 	if !ok {
@@ -223,9 +213,7 @@ func (d *Document) selectedParagraphs() []Paragraph {
 	return out
 }
 
-// ---------------------------------------------------------------------------
 // Public selection API
-// ---------------------------------------------------------------------------
 
 // HasSelection reports whether any text is selected.
 func (d *Document) HasSelection() bool {
@@ -235,8 +223,7 @@ func (d *Document) HasSelection() bool {
 	return ok
 }
 
-// SelectionLen is the number of characters selected (paragraph breaks count
-// as one each).
+// SelectionLen is the number of selected characters (a paragraph break counts as one).
 func (d *Document) SelectionLen() int {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
@@ -254,8 +241,7 @@ func (d *Document) SelectionLen() int {
 	return n + eo
 }
 
-// BeginSelection starts a selection at the cursor if there is none yet. Call
-// it just before moving the cursor with Shift held.
+// BeginSelection starts a selection at the cursor if none exists (call before Shift+move).
 func (d *Document) BeginSelection() {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -274,8 +260,7 @@ func (d *Document) ClearSelection() {
 	d.hasAnchor = false
 }
 
-// CollapseSelection drops the selection and puts the cursor at its start or
-// end (what Left / Right do when text is selected).
+// CollapseSelection drops the selection, moving the cursor to its start or end.
 func (d *Document) CollapseSelection(toStart bool) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -318,9 +303,7 @@ func (d *Document) SelectedText() string {
 	return strings.Join(parts, "\n")
 }
 
-// deleteSelectionLocked removes the selected text and puts the cursor where
-// it was. It reports whether anything was deleted. Caller holds the lock and
-// has called ensureCursor.
+// deleteSelectionLocked removes the selection; reports whether anything was deleted.
 func (d *Document) deleteSelectionLocked() bool {
 	sp, so, ep, eo, ok := d.selectionRange()
 	d.hasAnchor = false
@@ -332,8 +315,7 @@ func (d *Document) deleteSelectionLocked() bool {
 		d.CursorPara = sp
 		d.deleteRange(so, eo)
 	} else {
-		// Keep what is before the selection in the first paragraph and what
-		// is after it in the last, joined into one paragraph.
+		// Join the text before the selection with the text after it.
 		head := sliceRuns(d.Paragraphs[sp].Runs, 0, so)
 		tail := sliceRuns(d.Paragraphs[ep].Runs, eo, runeLen(d.Paragraphs[ep].Runs))
 		d.Paragraphs[sp] = Paragraph{
@@ -360,12 +342,9 @@ func (d *Document) DeleteSelection() bool {
 	return d.deleteSelectionLocked()
 }
 
-// ---------------------------------------------------------------------------
 // Clipboard
-// ---------------------------------------------------------------------------
 
-// Copy copies the selection to the clipboard. It reports whether there was a
-// selection.
+// Copy copies the selection; reports whether there was one.
 func (d *Document) Copy() bool {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -393,8 +372,7 @@ func (d *Document) Cut() bool {
 	return true
 }
 
-// Paste inserts the clipboard at the cursor, replacing the selection. It
-// reports whether there was anything to paste.
+// Paste inserts the clipboard, replacing the selection; reports whether it had content.
 func (d *Document) Paste() bool {
 	items := getClip()
 	if len(items) == 0 {
@@ -437,9 +415,7 @@ func (d *Document) Paste() bool {
 	return true
 }
 
-// ---------------------------------------------------------------------------
 // Formatting the selection
-// ---------------------------------------------------------------------------
 
 // ToggleStyleOnSelection toggles a style on the selected text.
 func (d *Document) ToggleStyleOnSelection(s Style) bool {
@@ -471,8 +447,7 @@ func (d *Document) ToggleStyleOnSelection(s Style) bool {
 	return true
 }
 
-// SetSelectionColor sets the text (or background) colour of the selected
-// text. An empty value restores the terminal default.
+// SetSelectionColor sets the selection's text or background colour (empty = default).
 func (d *Document) SetSelectionColor(background bool, value string) bool {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -495,8 +470,7 @@ func (d *Document) SetSelectionColor(background bool, value string) bool {
 }
 
 
-/// ApplyActiveToSelection applies the active typing style and colours to the
-// selected text.
+// ApplyActiveToSelection applies the typing style and colours to the selection.
 func (d *Document) ApplyActiveToSelection() bool {
 	d.mu.Lock()
 	defer d.mu.Unlock()

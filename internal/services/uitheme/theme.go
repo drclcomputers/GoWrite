@@ -58,8 +58,7 @@ func StyleForm(f *tview.Form, title string) *tview.Form {
 	return f
 }
 
-// StyleModal paints a question or message. The background stays dark.
-// A warning uses a rust border, a success a green one. Neither fills the box.
+// StyleModal paints a message on a dark background; warnings get a rust border, successes green.
 func StyleModal(m *tview.Modal, title string) *tview.Modal {
 	return tone(m, title, Line, Amber)
 }

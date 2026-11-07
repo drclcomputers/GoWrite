@@ -7,7 +7,7 @@ package document
 
 import "sync"
 
-// Style flags (bitmask). Can be combined.
+// Style flags (bitmask).
 type Style uint8
 
 const (
@@ -35,14 +35,14 @@ type Run struct {
 	Bg    string
 }
 
-// Paragraph is a sequence of runs. Soft-wrapped on screen; hard break = new paragraph.
+// Paragraph is a list of runs; a hard break starts a new paragraph.
 type Paragraph struct {
 	Runs      []Run
 	Align     Align
 	PageBreak bool
 }
 
-// Document is a multi-paragraph word-processor model with basic styling.
+// Document is a word-processor model: paragraphs of styled runs.
 type Document struct {
 	mu       sync.RWMutex
 	Title    string

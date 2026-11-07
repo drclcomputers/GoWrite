@@ -98,9 +98,7 @@ func wrapRunes(rs []rune, width int) []visualLine {
 	return lines
 }
 
-// lineIndexFor returns the index of the visual line that owns offset off.
-// An offset that sits exactly on a soft-wrap boundary belongs to the line
-// that starts there.
+// lineIndexFor returns the visual line owning off; a wrap boundary belongs to the next line.
 func lineIndexFor(lines []visualLine, off int) int {
 	for i := len(lines) - 1; i > 0; i-- {
 		if off >= lines[i].Start {
@@ -110,10 +108,7 @@ func lineIndexFor(lines []visualLine, off int) int {
 	return 0
 }
 
-// lineMaxOffset is the furthest offset the cursor may take on a line.
-// On the last line of a paragraph that is the end of the paragraph; on a
-// wrapped line it is the end of the visible text (the offset one past it
-// belongs to the next line).
+// lineMaxOffset is the furthest cursor offset on a line.
 func lineMaxOffset(ln visualLine, last bool) int {
 	if last {
 		return ln.End
@@ -128,8 +123,7 @@ func lineMaxOffset(ln visualLine, last bool) int {
 	return m
 }
 
-// offsetAtCol returns the cursor offset on a line for a content column
-// (cells from the start of the line's text).
+// offsetAtCol returns the cursor offset for a content column on a line.
 func offsetAtCol(rs []rune, ln visualLine, last bool, col int) int {
 	limit := lineMaxOffset(ln, last)
 	o := ln.Start
@@ -145,8 +139,7 @@ func offsetAtCol(rs []rune, ln visualLine, last bool, col int) int {
 	return o
 }
 
-// alignPad is the number of blank cells put before a line's text so it is
-// left/centre/right aligned within wrapWidth cells.
+// alignPad is the blank cells before a line to align it within wrapWidth.
 func alignPad(a Align, wrapWidth, contentWidth int) int {
 	if wrapWidth <= contentWidth {
 		return 0
@@ -370,8 +363,7 @@ func (d *Document) render(withCaret bool) (string, int) {
 			if breakSel && li == len(lines)-1 {
 				lineWidth++
 			}
-			// Note: exact width calculation for tags is tricky, but since we wrap to ps.Width,
-			// it shouldn't overflow.
+			// Tags are zero-width, so wrapping to ps.Width cannot overflow.
 			if lineWidth < ps.Width {
 				b.WriteString(strings.Repeat(" ", ps.Width-lineWidth))
 			}
@@ -450,23 +442,17 @@ func (d *Document) CursorRow() int {
 }
 
 
-// ---------------------------------------------------------------------------
 // Navigation on visual lines
-// ---------------------------------------------------------------------------
 
-// curLayout returns the cursor paragraph's runes, its visual lines and the
-// index of the line the cursor is on. Caller holds the lock and has called
-// ensureCursor.
+// curLayout returns the cursor paragraph's runes, its lines and the cursor's
+// line index. Caller holds the lock.
 func (d *Document) curLayout() ([]rune, []visualLine, int) {
 	rs := []rune(plainOf(d.Paragraphs[d.CursorPara]))
 	lines := wrapRunes(rs, d.wrapWidth())
 	return rs, lines, lineIndexFor(lines, d.CursorOff)
 }
 
-// goalColumn is the screen column Up/Down try to keep. It is remembered
-// across consecutive vertical moves so a short line in between does not make
-// the cursor forget where it was; any other movement or edit changes the
-// cursor position and so naturally invalidates it.
+// goalColumn is the column Up/Down try to keep across consecutive vertical moves.
 func (d *Document) goalColumn(p Paragraph, rs []rune, ln visualLine) int {
 	if d.goalSet && d.goalPara == d.CursorPara && d.goalOff == d.CursorOff {
 		return d.goalCol
@@ -475,10 +461,8 @@ func (d *Document) goalColumn(p Paragraph, rs []rune, ln visualLine) int {
 	return pad + widthOf(rs[ln.Start:d.CursorOff])
 }
 
-// moveVertical moves the cursor one visual line up (dir < 0) or down
-// (dir > 0), crossing paragraph boundaries. At the very top / bottom of the
-// document it jumps to the start / end. Caller holds the lock and has called
-// ensureCursor.
+// moveVertical moves one visual line up (dir < 0) or down, crossing paragraphs;
+// at the document edges it jumps to the start/end.
 func (d *Document) moveVertical(dir int) {
 	ww := d.wrapWidth()
 	p := d.Paragraphs[d.CursorPara]
@@ -535,8 +519,7 @@ func (d *Document) MoveDown() {
 	d.moveVertical(1)
 }
 
-// MovePage moves the cursor by rows visual lines (negative = up), keeping the
-// column. It stops at the start / end of the document.
+// MovePage moves by rows visual lines (negative = up), keeping the column.
 func (d *Document) MovePage(rows int) {
 	d.mu.Lock()
 	defer d.mu.Unlock()

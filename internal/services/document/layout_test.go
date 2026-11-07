@@ -173,9 +173,8 @@ func TestMovePage(t *testing.T) {
 	}
 }
 
-// The original bug: a right-aligned line padded to the full width was pushed
-// onto the next row by the caret. No rendered row may ever be wider than the
-// view, whatever the alignment, text or caret position.
+// Regression: the caret pushed a full-width right-aligned line onto the next row;
+// no row may exceed the view width.
 func TestRenderNeverExceedsDisplayWidth(t *testing.T) {
 	texts := []string{
 		"",

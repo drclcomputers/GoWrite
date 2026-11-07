@@ -135,7 +135,6 @@ func (e *Editor) handleKeys(event *tcell.EventKey) *tcell.EventKey {
 		}
 	}
 
-	// ... [Rest of navigation and typing remains unchanged] ...
 	shift := mod&tcell.ModShift != 0
 	altShift := mod&tcell.ModAlt != 0 && shift
 	switch event.Key() {

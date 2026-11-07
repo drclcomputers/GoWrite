@@ -12,8 +12,7 @@ import (
 
 const maxHistory = 200
 
-// historyEntry is a snapshot of everything undo can change: the paragraphs
-// (text, runs, alignment, page breaks), the page setup and the cursor.
+// historyEntry is an undo snapshot: paragraphs, page setup and cursor.
 type historyEntry struct {
 	Paragraphs []Paragraph
 	Page       PageSettings
@@ -21,8 +20,7 @@ type historyEntry struct {
 	CursorOff  int
 }
 
-// editKind says what sort of edit last touched the document, so consecutive
-// edits of the same kind can share one undo step.
+// editKind groups consecutive edits of one kind into a single undo step.
 type editKind uint8
 
 const (
@@ -46,9 +44,7 @@ func (d *Document) takeSnapshot() historyEntry {
 	}
 }
 
-// sameContent reports whether two snapshots look identical on the page. The
-// cursor is ignored: an operation that changed nothing must not leave an
-// undo step behind.
+// sameContent compares snapshots, ignoring the cursor.
 func sameContent(a, b historyEntry) bool {
 	if a.Page != b.Page || len(a.Paragraphs) != len(b.Paragraphs) {
 		return false
@@ -62,8 +58,7 @@ func sameContent(a, b historyEntry) bool {
 	return true
 }
 
-// pushHistory records a snapshot before a mutation and ends any run of
-// coalesced typing. Caller holds the lock.
+// pushHistory snapshots before a mutation and ends any typing run.
 func (d *Document) pushHistory() {
 	d.history = append(d.history, d.takeSnapshot())
 	if len(d.history) > maxHistory {
@@ -73,12 +68,8 @@ func (d *Document) pushHistory() {
 	d.lastEdit = editOther
 }
 
-// pushHistoryCoalesced is pushHistory for typing and single-character
-// deletes. It skips the snapshot when this edit continues the previous one:
-// same kind, cursor exactly where the last edit left it, no selection being
-// replaced, and (for typing) not the first letter of a new word. That way
-// one undo removes a word, not a letter. Caller holds the lock, and must call
-// endCoalescedEdit once the edit has moved the cursor.
+// pushHistoryCoalesced skips the snapshot when this edit continues the last one
+// (same kind and cursor spot, no selection, not a new word).
 func (d *Document) pushHistoryCoalesced(kind editKind, r rune) {
 	hasSel := d.hasAnchor && (d.anchorPara != d.CursorPara || d.anchorOff != d.CursorOff)
 	continues := !hasSel &&
@@ -96,14 +87,12 @@ func (d *Document) pushHistoryCoalesced(kind editKind, r rune) {
 	d.lastEditSpace = unicode.IsSpace(r)
 }
 
-// endCoalescedEdit remembers where the edit left the cursor. Caller holds
-// the lock.
+// endCoalescedEdit records where the edit left the cursor.
 func (d *Document) endCoalescedEdit() {
 	d.lastEditPara, d.lastEditOff = d.CursorPara, d.CursorOff
 }
 
-// popHistory removes the most recent entry — used when an operation turned
-// out to be a no-op. Caller holds the lock.
+// popHistory drops the latest entry (for no-op operations).
 func (d *Document) popHistory() {
 	if len(d.history) > 0 {
 		d.history = d.history[:len(d.history)-1]
@@ -123,9 +112,7 @@ func (d *Document) restore(h historyEntry) {
 	d.ensureCursor()
 }
 
-// step pops entries off from, skipping any that would change nothing, and
-// restores the first real one, pushing the current state onto to. Caller
-// holds the lock.
+// step moves one real change from one stack to the other.
 func (d *Document) step(from, to *[]historyEntry) bool {
 	cur := d.takeSnapshot()
 	for len(*from) > 0 {
@@ -143,16 +130,14 @@ func (d *Document) step(from, to *[]historyEntry) bool {
 	return false
 }
 
-// Undo reverts the last mutating operation. Reports whether anything was
-// undone.
+// Undo reverts the last change.
 func (d *Document) Undo() bool {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	return d.step(&d.history, &d.redo)
 }
 
-// Redo re-applies the last undone operation. Reports whether anything was
-// redone.
+// Redo re-applies the last undone change.
 func (d *Document) Redo() bool {
 	d.mu.Lock()
 	defer d.mu.Unlock()
