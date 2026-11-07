@@ -62,6 +62,7 @@ func (d *Document) ToggleStyle(s Style) {
 func (d *Document) SetActiveStyle(s Style) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	d.lastEdit = editOther
 	d.ActiveStyle = s
 }
 
@@ -111,12 +112,14 @@ func (d *Document) CurrentAlign() Align {
 func (d *Document) SetActiveFg(fg string) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	d.lastEdit = editOther
 	d.ActiveFg = fg
 }
 
 func (d *Document) SetActiveBg(bg string) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	d.lastEdit = editOther
 	d.ActiveBg = bg
 }
 

@@ -3,8 +3,7 @@
 // This work is licensed under the terms of the MIT license.
 // For a copy, see <https://opensource.org/licenses/MIT>.
 
-// A simple terminal-based word processor using tview.
-// main.go is the entry point of the application.
+// GoWrite: a terminal word processor built on tview. Entry point.
 
 package main
 

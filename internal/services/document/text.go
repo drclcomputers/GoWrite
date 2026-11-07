@@ -61,6 +61,7 @@ func (d *Document) SetText(s string) {
 	d.goalSet = false
 	d.history = nil
 	d.redo = nil
+	d.lastEdit = editOther
 	d.Dirty = true
 }
 

@@ -9,7 +9,11 @@ func (d *Document) InsertRune(r rune) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.ensureCursor()
-	d.pushHistory()
+	if r == '\n' {
+		d.pushHistory()
+	} else {
+		d.pushHistoryCoalesced(editTyping, r)
+	}
 	d.deleteSelectionLocked()
 
 	if r == '\n' {
@@ -26,6 +30,7 @@ func (d *Document) InsertRune(r rune) {
 	d.insertIntoRuns(string(r), d.ActiveStyle, d.ActiveFg, d.ActiveBg)
 	d.CursorOff++
 	d.Dirty = true
+	d.endCoalescedEdit()
 }
 
 func sameRunStyle(r Run, style Style, fg, bg string) bool {
@@ -93,7 +98,7 @@ func (d *Document) splitParaAtCursor() (left, right Paragraph) {
 			if len(rightRuns) == 0 {
 				rightRuns = []Run{{Text: "", Style: StyleNone}}
 			}
-			return Paragraph{Runs: leftRuns, Align: p.Align}, Paragraph{Runs: rightRuns, Align: p.Align}
+			return Paragraph{Runs: leftRuns, Align: p.Align, PageBreak: p.PageBreak}, Paragraph{Runs: rightRuns, Align: p.Align}
 		}
 		pos += runLen
 	}
@@ -108,7 +113,11 @@ func (d *Document) Backspace() {
 	if !hasSel && d.CursorPara == 0 && d.CursorOff == 0 {
 		return
 	}
-	d.pushHistory()
+	if hasSel || d.CursorOff == 0 {
+		d.pushHistory()
+	} else {
+		d.pushHistoryCoalesced(editBackspace, 0)
+	}
 	if d.deleteSelectionLocked() {
 		return
 	}
@@ -117,6 +126,7 @@ func (d *Document) Backspace() {
 		d.deleteRange(d.CursorOff-1, d.CursorOff)
 		d.CursorOff--
 		d.Dirty = true
+		d.endCoalescedEdit()
 		return
 	}
 	if d.CursorPara == 0 {
@@ -141,7 +151,11 @@ func (d *Document) Delete() {
 	if !hasSel && !hasCharAfter && !hasParaAfter {
 		return
 	}
-	d.pushHistory()
+	if hasSel || !hasCharAfter {
+		d.pushHistory()
+	} else {
+		d.pushHistoryCoalesced(editDelete, 0)
+	}
 	if d.deleteSelectionLocked() {
 		return
 	}
@@ -149,6 +163,7 @@ func (d *Document) Delete() {
 	if hasCharAfter {
 		d.deleteRange(d.CursorOff, d.CursorOff+1)
 		d.Dirty = true
+		d.endCoalescedEdit()
 		return
 	}
 	if !hasParaAfter {

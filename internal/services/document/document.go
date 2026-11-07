@@ -76,6 +76,12 @@ type Document struct {
 
 	history []historyEntry
 	redo    []historyEntry
+
+	// Typing coalescing: see pushHistoryCoalesced.
+	lastEdit      editKind
+	lastEditPara  int
+	lastEditOff   int
+	lastEditSpace bool
 }
 
 // New creates an empty document with one blank paragraph.
@@ -93,6 +99,10 @@ func New() *Document {
 func (d *Document) SetPageSettings(p PageSettings) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	if p == d.Page {
+		return
+	}
+	d.pushHistory()
 	d.Page = p
 	d.Dirty = true
 }

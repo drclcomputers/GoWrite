@@ -337,8 +337,9 @@ func (d *Document) deleteSelectionLocked() bool {
 		head := sliceRuns(d.Paragraphs[sp].Runs, 0, so)
 		tail := sliceRuns(d.Paragraphs[ep].Runs, eo, runeLen(d.Paragraphs[ep].Runs))
 		d.Paragraphs[sp] = Paragraph{
-			Runs:  normalizeRuns(append(head, tail...)),
-			Align: d.Paragraphs[sp].Align,
+			Runs:      normalizeRuns(append(head, tail...)),
+			Align:     d.Paragraphs[sp].Align,
+			PageBreak: d.Paragraphs[sp].PageBreak,
 		}
 		d.Paragraphs = append(d.Paragraphs[:sp+1], d.Paragraphs[ep+1:]...)
 	}
@@ -409,13 +410,14 @@ func (d *Document) Paste() bool {
 	if len(items) == 1 {
 		runs := append(cloneRuns(left.Runs), items[0].Runs...)
 		runs = append(runs, right.Runs...)
-		d.Paragraphs[d.CursorPara] = Paragraph{Runs: normalizeRuns(runs), Align: left.Align}
+		d.Paragraphs[d.CursorPara] = Paragraph{Runs: normalizeRuns(runs), Align: left.Align, PageBreak: left.PageBreak}
 		d.CursorOff += runeLen(items[0].Runs)
 	} else {
 		last := items[len(items)-1]
 		first := Paragraph{
-			Runs:  normalizeRuns(append(cloneRuns(left.Runs), items[0].Runs...)),
-			Align: left.Align,
+			Runs:      normalizeRuns(append(cloneRuns(left.Runs), items[0].Runs...)),
+			Align:     left.Align,
+			PageBreak: left.PageBreak,
 		}
 		lastP := Paragraph{
 			Runs:  normalizeRuns(append(cloneRuns(last.Runs), right.Runs...)),
