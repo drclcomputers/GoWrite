@@ -31,8 +31,8 @@ func (e *Editor) showGoToDialog() {
 			return
 		}
 		e.Doc.GoToLine(n)
-		e.redraw()
 		e.App.SetRoot(e.Root, true).SetFocus(e.View)
+		e.redraw()
 	})
 	form.AddButton("Cancel", func() {
 		e.App.SetRoot(e.Root, true).SetFocus(e.View)
@@ -170,11 +170,11 @@ func (e *Editor) findNext(backwards bool) {
 func (e *Editor) flashStatus(msg string) {
 	e.flashSeq++
 	seq := e.flashSeq
-	e.Status.SetText(fmt.Sprintf(" [yellow]%s[::-]", msg))
+	e.Status.SetText(fmt.Sprintf(" [#f0d090]%s[::-]", msg))
 	time.AfterFunc(3*time.Second, func() {
 		e.App.QueueUpdateDraw(func() {
 			if seq == e.flashSeq {
-				e.refreshStatus()
+				e.refreshUI()
 			}
 		})
 	})

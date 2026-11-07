@@ -30,6 +30,13 @@ func (e *Editor) handleKeys(event *tcell.EventKey) *tcell.EventKey {
 
 	if mod&tcell.ModAlt != 0 {
 		hasShift := mod&tcell.ModShift != 0
+
+		// Format Dialog
+		if event.Key() == tcell.KeyEnter {
+			e.showFormatDialog()
+			return nil
+		}
+
 		switch event.Rune() {
 		case 'a', 'A':
 			if hasShift {

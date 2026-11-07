@@ -7,19 +7,19 @@ import (
 	"fmt"
 	"gowrite/internal/services/document"
 	"gowrite/internal/services/uitheme"
-	"gowrite/internal/utils"
+	"path/filepath"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
 
 type Editor struct {
-	App      *tview.Application
-	Doc      *document.Document
-	Root     *tview.Flex
-	View     *tview.TextView
-	Status   *tview.TextView
-	TitleBar *tview.TextView
+	App    *tview.Application
+	Doc    *document.Document
+	Root   *tview.Flex
+	TopBar *tview.TextView
+	View   *tview.TextView
+	Status *tview.TextView
 
 	lastW, lastH int
 	flashSeq     int
@@ -28,12 +28,13 @@ type Editor struct {
 func NewEditor(app *tview.Application, doc *document.Document) *Editor {
 	e := &Editor{App: app, Doc: doc}
 
-	e.TitleBar = tview.NewTextView().
+	// Top Bar (Stats & Style)
+	e.TopBar = tview.NewTextView().
 		SetDynamicColors(true).
-		SetTextAlign(tview.AlignCenter)
-	e.TitleBar.SetBackgroundColor(uitheme.Ink)
-	e.refreshTitle()
+		SetTextAlign(tview.AlignLeft)
+	e.TopBar.SetBackgroundColor(uitheme.Panel)
 
+	// Main Document View
 	e.View = tview.NewTextView().
 		SetDynamicColors(true).
 		SetWordWrap(true).
@@ -43,19 +44,19 @@ func NewEditor(app *tview.Application, doc *document.Document) *Editor {
 	e.View.SetBackgroundColor(uitheme.Ink)
 	e.View.SetBorder(true)
 	e.View.SetBorderColor(uitheme.Line)
-	e.View.SetTitle(" Document ")
 	e.View.SetTitleColor(uitheme.Amber)
-	e.View.SetTitleAlign(tview.AlignLeft)
+	e.View.SetTitleAlign(tview.AlignCenter)
 	e.View.SetTextColor(uitheme.Text)
 
+	// Status Bar
 	e.Status = tview.NewTextView().
 		SetDynamicColors(true).
 		SetTextAlign(tview.AlignLeft)
 	e.Status.SetBackgroundColor(uitheme.Panel)
-	e.refreshStatus()
 
+	// Layout: TopBar | View | Status
 	e.Root = tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(e.TitleBar, 1, 0, false).
+		AddItem(e.TopBar, 1, 0, false).
 		AddItem(e.View, 0, 1, true).
 		AddItem(e.Status, 1, 0, false)
 	e.Root.SetBackgroundColor(uitheme.Ink)
@@ -95,8 +96,7 @@ func (e *Editor) redraw() {
 		top = 0
 	}
 	e.View.ScrollTo(top, 0)
-	e.refreshStatus()
-	e.refreshTitle()
+	e.refreshUI()
 }
 
 func (e *Editor) pageRows() int {
@@ -107,33 +107,29 @@ func (e *Editor) pageRows() int {
 	return h - 1
 }
 
-func (e *Editor) refreshTitle() {
-	dirty := ""
-	if e.Doc.IsDirty() {
-		dirty = " [yellow]•[::-]"
-	}
+// refreshUI synchronizes the TopBar, Title, and StatusBar.
+func (e *Editor) refreshUI() {
 	name := e.Doc.GetTitle()
 	if fn := e.Doc.GetFilename(); fn != "" {
-		name = utils.PrettyPath(fn, "title")
+		name = filepath.Base(fn)
 	}
-	e.TitleBar.SetText(fmt.Sprintf("[::b]GoWrite[::-]  %s%s  [gray]v%s[::-]",
-		name, dirty, utils.VER))
-}
 
-func (e *Editor) refreshStatus() {
-	words := e.Doc.WordCount()
-	chars := e.Doc.CharCount()
-	paras := e.Doc.ParagraphCount()
+	dirty := ""
+	if e.Doc.IsDirty() {
+		dirty = " *"
+	}
+	// 1. Update View Title (embedded in border)
+	e.View.SetTitle(fmt.Sprintf(" GoWrite - %s%s ", name, dirty))
+
+	// 2. Update Top Bar (Word processor stats + style)
 	line := e.Doc.CursorLine()
 	col := e.Doc.CursorCol()
+	words := e.Doc.WordCount()
 	style := e.Doc.StyleString()
-	sel := ""
-	if n := e.Doc.SelectionLen(); n > 0 {
-		sel = fmt.Sprintf("  [teal]Sel:%d[::-]", n)
-	}
-	e.Status.SetText(fmt.Sprintf(
-		" [teal]Ln %d, Col %d[::-]  [teal]W:%d C:%d ¶%d[::-]%s  [yellow]%s[::-]  [gray]| Alt+C/Y colour · Alt+L/E/R align · Alt+B/I/U style · Alt+Z undo · ? help[::-]",
-		line, col, words, chars, paras, sel, style))
+	e.TopBar.SetText(fmt.Sprintf(" [#f0d090]Ln %d, Col %d[::-]  [gray]|[::-]  Words: %d  [gray]|[::-]  %s", line, col, words, style))
+
+	// 3. Update Status Bar (Amber for keys, white for descriptions)
+	e.Status.SetText(" [teal]Document[::-]    [#f0d090]Alt+Enter[::-] format    [#f0d090]Alt+S[::-] save    [#f0d090]Alt+F[::-] find    [#f0d090]?[::-] help")
 }
 
 func (e *Editor) Mount() {
