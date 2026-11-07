@@ -1,4 +1,4 @@
-// Copyright (c) 2025 @drclcomputers. All rights reserved.
+// Copyright (c) 2026 @drclcomputers. All rights reserved.
 //
 // This work is licensed under the terms of the MIT license.
 // For a copy, see <https://opensource.org/licenses/MIT>.
@@ -15,28 +15,34 @@ import (
 )
 
 const newDocButtonLabel = `
-┌─────────────┐
-│             │
-│   NEW DOC   │
-│             │
-└─────────────┘
+┌──────────────┐
+│   ┌────╮     │
+│   │    ╰┐    │
+│   │ ──── │   │
+│   │ ───  │   │
+│   └─────┘    │
+└──────────────┘
+NEW DOCUMENT
 `
 
 const openDocButtonLabel = `
 ┌────────────┐
-│            │
-│    OPEN    │
-│            │
+│ ▄▄▄        │
+│ ┌────────┐ │
+│ │ ────── │ │
+│ └────────┘ │
 └────────────┘
+OPEN
 `
 
 const quitButtonLabel = `
-
 ┌────────────┐
-│            │
-│    QUIT    │
-│            │
+│ ┌──────┐   │
+│ │    ● │ → │
+│ │      │   │
+│ └──────┘   │
 └────────────┘
+QUIT
 `
 
 // StartMenuResult is what the start menu returns.
@@ -95,9 +101,9 @@ func StartMenuUI(app *tview.Application) StartMenuResult {
 
 	leftPanel.
 		AddItem(title, 0, 1, false).
-		AddItem(newBtn, 0, 2, true).
-		AddItem(openBtn, 0, 2, true).
-		AddItem(quitBtn, 0, 2, true)
+		AddItem(newBtn, 0, 3, true).
+		AddItem(openBtn, 0, 3, true).
+		AddItem(quitBtn, 0, 3, true)
 
 	// Right side – placeholder for recent files later
 	rightPanel := tview.NewFlex().SetDirection(tview.FlexRow)
@@ -113,7 +119,7 @@ func StartMenuUI(app *tview.Application) StartMenuResult {
 	recentList := tview.NewList()
 	uitheme.StyleList(recentList, "")
 	recentList.AddItem("No recent documents yet", "They will appear here after you save files", 0, nil)
-	recentList.SetSelectedTextColor(tcell.ColorGray)
+	recentList.SetSelectedTextColor(tcell.ColorWhite)
 
 	rightPanel.
 		AddItem(recentTitle, 3, 0, false).

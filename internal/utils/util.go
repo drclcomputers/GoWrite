@@ -1,4 +1,4 @@
-// Copyright (c) 2025 @drclcomputers. All rights reserved.
+// Copyright (c) 2026 @drclcomputers. All rights reserved.
 //
 // This work is licensed under the terms of the MIT license.
 // For a copy, see <https://opensource.org/licenses/MIT>.
@@ -11,7 +11,7 @@ import (
 	"strings"
 )
 
-const VER = "0.1.0"
+const VER = "0.2.0"
 
 // PrettyPath shortens a path for display (home → ~).
 func PrettyPath(p, context string) string {

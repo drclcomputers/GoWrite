@@ -1,4 +1,4 @@
-// Copyright (c) 2025 @drclcomputers. All rights reserved.
+// Copyright (c) 2026 @drclcomputers. All rights reserved.
 //
 // This work is licensed under the terms of the MIT license.
 // For a copy, see <https://opensource.org/licenses/MIT>.
@@ -58,19 +58,16 @@ func main() {
 	var doc *document.Document
 
 	if filename != "" {
-		// TODO: real file loading
 		doc = document.New()
 		doc.Filename = filename
 		doc.Title = filename
-		// For now just start empty; load logic comes next
+		// Real file loading comes in the next layer
 	} else {
-		// Show the start menu (same pattern as GoSheet)
 		choice := ui.StartMenuUI(app)
 		switch choice {
 		case ui.StartQuit:
 			return
 		case ui.StartOpen:
-			// Placeholder – will open file dialog later
 			doc = document.New()
 		case ui.StartNew:
 			doc = document.New()
