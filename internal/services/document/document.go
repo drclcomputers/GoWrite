@@ -64,8 +64,22 @@ type Document struct {
 	ActiveFg    string
 	ActiveBg    string
 
-	// DisplayWidth is used for center/right padding when rendering.
+	// DisplayWidth is the width (in cells) of the editing surface. Text is
+	// wrapped and aligned to it; the UI keeps it in sync with the view.
 	DisplayWidth int
+
+	// Selection: the anchor is where it started; the other end is the cursor.
+	// There is a selection only while hasAnchor is set and the anchor differs
+	// from the cursor (see selection.go).
+	hasAnchor  bool
+	anchorPara int
+	anchorOff  int
+
+	// Goal column for Up/Down (see goalColumn in layout.go).
+	goalSet  bool
+	goalCol  int
+	goalPara int
+	goalOff  int
 
 	// Last search (for Find Next / Prev)
 	LastSearch      string
@@ -123,36 +137,6 @@ func (d *Document) Text() string {
 	return strings.Join(parts, "\n")
 }
 
-// StyledText returns a tview-friendly string with colour/style tags for display.
-func (d *Document) StyledText() string {
-	d.mu.RLock()
-	defer d.mu.RUnlock()
-	var b strings.Builder
-	for i, p := range d.Paragraphs {
-		if i > 0 {
-			b.WriteByte('\n')
-		}
-		if p.Align != AlignLeft {
-			plain := plainOf(p)
-			padded := padAligned(plain, p.Align, d.DisplayWidth)
-			lead := len([]rune(padded)) - len([]rune(plain))
-			if lead > 0 {
-				b.WriteString(strings.Repeat(" ", lead))
-			}
-		}
-		for _, r := range p.Runs {
-			if r.Text == "" {
-				continue
-			}
-			open, close := styleTags(r.Style, r.Fg, r.Bg)
-			b.WriteString(open)
-			b.WriteString(decorateRunText(r.Text, r.Style))
-			b.WriteString(close)
-		}
-	}
-	return b.String()
-}
-
 // AbsoluteCursorOffset returns the plain-text offset of the cursor from the
 // start of the document (counting newlines between paragraphs).
 func (d *Document) AbsoluteCursorOffset() int {
@@ -164,91 +148,6 @@ func (d *Document) AbsoluteCursorOffset() int {
 	}
 	off += d.CursorOff
 	return off
-}
-
-// StyledTextWithCursor is like StyledText but inserts a visible caret
-// at the current position so a TextView can show where typing will go.
-func (d *Document) StyledTextWithCursor() string {
-	d.mu.RLock()
-	defer d.mu.RUnlock()
-	var b strings.Builder
-	// Use a simple reverse-style block that tview always understands.
-	// Avoid raw hex tags that can leak as literal text on some terminals.
-	const caretOpen = "[-:-:-][black:#f0d090]"
-	const caretClose = "[-:-:-]"
-
-	for pi, p := range d.Paragraphs {
-		if pi > 0 {
-			b.WriteByte('\n')
-		}
-		if p.Align != AlignLeft {
-			plain := plainOf(p)
-			padded := padAligned(plain, p.Align, d.DisplayWidth)
-			lead := len([]rune(padded)) - len([]rune(plain))
-			if lead > 0 {
-				b.WriteString(strings.Repeat(" ", lead))
-			}
-		}
-		cursorHere := pi == d.CursorPara
-		pos := 0
-		cursorDrawn := false
-		for _, r := range p.Runs {
-			runes := []rune(r.Text)
-			open, close := styleTags(r.Style, r.Fg, r.Bg)
-			if !cursorHere {
-				if r.Text != "" {
-					b.WriteString(open)
-					b.WriteString(decorateRunText(r.Text, r.Style))
-					b.WriteString(close)
-				}
-				pos += len(runes)
-				continue
-			}
-			// May need to split this run around the cursor
-			drawnInThisRun := false
-			for i, ch := range runes {
-				if pos+i == d.CursorOff {
-					b.WriteString(open)
-					b.WriteString(decorateRunText(string(runes[:i]), r.Style))
-					b.WriteString(close)
-					b.WriteString(caretOpen)
-					// caret cell uses same decoration rules as the run
-					b.WriteString(decorateRunText(string(ch), r.Style))
-					b.WriteString(caretClose)
-					if i+1 < len(runes) {
-						b.WriteString(open)
-						b.WriteString(decorateRunText(string(runes[i+1:]), r.Style))
-						b.WriteString(close)
-					}
-					cursorDrawn = true
-					drawnInThisRun = true
-					break
-				}
-			}
-			if !drawnInThisRun {
-				if r.Text != "" {
-					b.WriteString(open)
-					b.WriteString(decorateRunText(r.Text, r.Style))
-					b.WriteString(close)
-				}
-			}
-			pos += len(runes)
-		}
-		// Cursor at end of paragraph (or empty paragraph)
-		if cursorHere && !cursorDrawn {
-			b.WriteString(caretOpen)
-			b.WriteRune('▌')
-			b.WriteString(caretClose)
-		}
-	}
-	if len(d.Paragraphs) == 0 {
-		b.WriteString(caretOpen)
-		b.WriteRune('▌')
-		b.WriteString(caretClose)
-	}
-	// Final reset so underline cannot bleed past the last cell
-	b.WriteString("[-:-:-]")
-	return b.String()
 }
 
 func styleTags(s Style, fg, bg string) (open, close string) {
@@ -300,28 +199,6 @@ func decorateRunText(text string, style Style) string {
 	return b.String()
 }
 
-// padAligned returns text padded for left/center/right within width.
-func padAligned(text string, align Align, width int) string {
-	if width <= 0 || align == AlignLeft {
-		return text
-	}
-	// Only pad the first visual line (simple paragraph-level alignment).
-	n := len([]rune(text))
-	if n >= width {
-		return text
-	}
-	pad := width - n
-	switch align {
-	case AlignCenter:
-		left := pad / 2
-		return strings.Repeat(" ", left) + text
-	case AlignRight:
-		return strings.Repeat(" ", pad) + text
-	default:
-		return text
-	}
-}
-
 // SetText replaces the entire content with plain text (no styles).
 func (d *Document) SetText(s string) {
 	d.mu.Lock()
@@ -337,6 +214,7 @@ func (d *Document) SetText(s string) {
 	}
 	d.CursorPara = 0
 	d.CursorOff = 0
+	d.hasAnchor = false
 	d.Dirty = true
 }
 
@@ -375,6 +253,7 @@ func (d *Document) InsertRune(r rune) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.ensureCursor()
+	d.deleteSelectionLocked() // typing over a selection replaces it
 
 	if r == '\n' {
 		// Split paragraph
@@ -478,6 +357,9 @@ func (d *Document) Backspace() {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.ensureCursor()
+	if d.deleteSelectionLocked() {
+		return
+	}
 
 	if d.CursorOff > 0 {
 		d.deleteRange(d.CursorOff-1, d.CursorOff)
@@ -503,6 +385,9 @@ func (d *Document) Delete() {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.ensureCursor()
+	if d.deleteSelectionLocked() {
+		return
+	}
 
 	plain := []rune(plainOf(d.Paragraphs[d.CursorPara]))
 	if d.CursorOff < len(plain) {
@@ -547,13 +432,12 @@ func (d *Document) deleteRange(from, to int) {
 		if keepRight > runLen {
 			keepRight = runLen
 		}
-		left := string(runes[:keepLeft])
-		right := string(runes[keepRight:])
-		if left != "" {
-			newRuns = append(newRuns, Run{Text: left, Style: run.Style})
-		}
-		if right != "" {
-			newRuns = append(newRuns, Run{Text: right, Style: run.Style})
+		// What is left of this run is the text before and after the deleted
+		// range. It keeps the run's style AND colours.
+		if rest := string(runes[:keepLeft]) + string(runes[keepRight:]); rest != "" {
+			kept := run
+			kept.Text = rest
+			newRuns = append(newRuns, kept)
 		}
 	}
 	if len(newRuns) == 0 {
@@ -562,11 +446,12 @@ func (d *Document) deleteRange(from, to int) {
 	p.Runs = newRuns
 }
 
-// MoveLeft / MoveRight / MoveUp / MoveDown / MoveWord*
+// MoveLeft / MoveRight / MoveWord* (vertical and line moves live in layout.go)
 func (d *Document) MoveLeft() {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.ensureCursor()
+	d.goalSet = false
 	if d.CursorOff > 0 {
 		d.CursorOff--
 		return
@@ -581,6 +466,7 @@ func (d *Document) MoveRight() {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.ensureCursor()
+	d.goalSet = false
 	plain := []rune(plainOf(d.Paragraphs[d.CursorPara]))
 	if d.CursorOff < len(plain) {
 		d.CursorOff++
@@ -592,37 +478,12 @@ func (d *Document) MoveRight() {
 	}
 }
 
-func (d *Document) MoveUp() {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	d.ensureCursor()
-	if d.CursorPara > 0 {
-		d.CursorPara--
-		plain := []rune(plainOf(d.Paragraphs[d.CursorPara]))
-		if d.CursorOff > len(plain) {
-			d.CursorOff = len(plain)
-		}
-	}
-}
-
-func (d *Document) MoveDown() {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	d.ensureCursor()
-	if d.CursorPara+1 < len(d.Paragraphs) {
-		d.CursorPara++
-		plain := []rune(plainOf(d.Paragraphs[d.CursorPara]))
-		if d.CursorOff > len(plain) {
-			d.CursorOff = len(plain)
-		}
-	}
-}
-
 // MoveWordLeft jumps to the start of the previous word.
 func (d *Document) MoveWordLeft() {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.ensureCursor()
+	d.goalSet = false
 	plain := []rune(plainOf(d.Paragraphs[d.CursorPara]))
 	if d.CursorOff == 0 {
 		if d.CursorPara > 0 {
@@ -648,6 +509,7 @@ func (d *Document) MoveWordRight() {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.ensureCursor()
+	d.goalSet = false
 	plain := []rune(plainOf(d.Paragraphs[d.CursorPara]))
 	n := len(plain)
 	if d.CursorOff >= n {
@@ -681,6 +543,8 @@ func (d *Document) GoToLine(line int) {
 	}
 	d.CursorPara = line - 1
 	d.CursorOff = 0
+	d.hasAnchor = false
+	d.goalSet = false
 }
 
 // ToggleStyle toggles a style flag on the active typing style.
@@ -729,6 +593,7 @@ func (d *Document) Find(query string, caseSensitive, wholeWord, backwards bool) 
 	if query == "" {
 		return d.CursorPara, d.CursorOff, false
 	}
+	d.hasAnchor = false
 	d.LastSearch = query
 	d.LastSearchCase = caseSensitive
 	d.LastSearchWhole = wholeWord
@@ -868,6 +733,7 @@ func (d *Document) ReplaceAll(old, new string, caseSensitive, wholeWord bool) in
 		d.Paragraphs[pi] = Paragraph{Runs: []Run{{Text: b.String(), Style: StyleNone}}}
 	}
 	if count > 0 {
+		d.hasAnchor = false
 		d.Dirty = true
 		d.ensureCursor()
 	}
@@ -936,12 +802,16 @@ func (d *Document) ActiveColors() (fg, bg string) {
 	return d.ActiveFg, d.ActiveBg
 }
 
-// SetParagraphAlign sets alignment for the paragraph under the cursor.
+// SetParagraphAlign sets alignment for the paragraph under the cursor, or for
+// every paragraph the selection touches.
 func (d *Document) SetParagraphAlign(a Align) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.ensureCursor()
-	d.Paragraphs[d.CursorPara].Align = a
+	first, last := d.cursorParagraphs()
+	for i := first; i <= last; i++ {
+		d.Paragraphs[i].Align = a
+	}
 	d.Dirty = true
 }
 

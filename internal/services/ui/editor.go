@@ -29,6 +29,10 @@ type Editor struct {
 	View   *tview.TextView
 	Status *tview.TextView
 	TitleBar *tview.TextView
+
+	// Size of the document view the text was last laid out for. When the
+	// terminal is resized we re-wrap (see NewEditor).
+	lastW, lastH int
 }
 
 // NewEditor builds the full-screen editor layout.
@@ -79,22 +83,76 @@ func NewEditor(app *tview.Application, doc *document.Document) *Editor {
 	e.Root.SetInputCapture(e.handleKeys)
 	e.View.SetInputCapture(e.handleKeys)
 
+	// Ctrl+C copies while text is selected; otherwise it keeps its global
+	// meaning from main.go (the exit prompt).
+	prevCapture := app.GetInputCapture()
+	app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Key() == tcell.KeyCtrlC && app.GetFocus() == e.View && e.Doc.HasSelection() {
+			e.copySelection()
+			return nil
+		}
+		if prevCapture != nil {
+			return prevCapture(event)
+		}
+		return event
+	})
+
+	// Text is wrapped by the document model to the view's width, so whenever
+	// the view's size changes (first draw, terminal resize) lay it out again.
+	app.SetAfterDrawFunc(func(_ tcell.Screen) {
+		_, _, w, h := e.View.GetInnerRect()
+		if w == e.lastW && h == e.lastH {
+			return
+		}
+		e.lastW, e.lastH = w, h
+		go app.QueueUpdateDraw(func() { e.redraw() })
+	})
+
 	e.redraw()
 	return e
 }
 
 func (e *Editor) redraw() {
-	// Styled text with a block cursor so the user can see where they are
-	e.View.SetText(e.Doc.StyledTextWithCursor())
-	// Keep the cursor line roughly in view
-	e.View.ScrollToBeginning()
-	// Heuristic: jump toward the cursor paragraph
-	line := e.Doc.CursorLine()
-	if line > 3 {
-		e.View.ScrollTo(line-2, 0)
+	// The document wraps and aligns text itself, so it needs the real width
+	// of the view.
+	_, _, w, h := e.View.GetInnerRect()
+	if w > 4 {
+		e.Doc.DisplayWidth = w
 	}
+
+	// Remember where the view is scrolled to (mouse wheel included), because
+	// SetText resets it.
+	top, _ := e.View.GetScrollOffset()
+
+	e.View.SetText(e.Doc.StyledTextWithCursor())
+
+	// Scroll the minimum amount needed to keep the cursor's screen row
+	// (a wrapped line, not a paragraph) inside the view.
+	if h > 0 {
+		row := e.Doc.CursorRow()
+		if row < top {
+			top = row
+		} else if row >= top+h {
+			top = row - h + 1
+		}
+	}
+	if top < 0 {
+		top = 0
+	}
+	e.View.ScrollTo(top, 0)
+
 	e.refreshStatus()
 	e.refreshTitle()
+}
+
+// pageRows is how many lines Page Up / Page Down move: one screenful, minus
+// one line of overlap so the reader keeps their place.
+func (e *Editor) pageRows() int {
+	_, _, _, h := e.View.GetInnerRect()
+	if h <= 1 {
+		return 1
+	}
+	return h - 1
 }
 
 func (e *Editor) refreshTitle() {
@@ -117,14 +175,23 @@ func (e *Editor) refreshStatus() {
 	line := e.Doc.CursorLine()
 	col := e.Doc.CursorCol()
 	style := e.Doc.StyleString()
+	sel := ""
+	if n := e.Doc.SelectionLen(); n > 0 {
+		sel = fmt.Sprintf("  [teal]Sel:%d[::-]", n)
+	}
 	e.Status.SetText(fmt.Sprintf(
-		" [teal]Ln %d, Col %d[::-]  [teal]W:%d C:%d ¶%d[::-]  [yellow]%s[::-]  [gray]| Alt+C/Y colour · Alt+L/E/R align · Alt+B/I/U style · ? help[::-]",
-		line, col, words, chars, paras, style))
+		" [teal]Ln %d, Col %d[::-]  [teal]W:%d C:%d ¶%d[::-]%s  [yellow]%s[::-]  [gray]| Alt+C/Y colour · Alt+L/E/R align · Alt+B/I/U style · ? help[::-]",
+		line, col, words, chars, paras, sel, style))
 }
 
 func (e *Editor) handleKeys(event *tcell.EventKey) *tcell.EventKey {
 	// Quit
 	if event.Key() == tcell.KeyEscape {
+		if e.Doc.HasSelection() {
+			e.Doc.ClearSelection()
+			e.redraw()
+			return nil
+		}
 		e.confirmQuit()
 		return nil
 	}
@@ -161,11 +228,23 @@ func (e *Editor) handleKeys(event *tcell.EventKey) *tcell.EventKey {
 		case tcell.KeyCtrlS:
 			e.saveDocument()
 			return nil
+		case tcell.KeyCtrlA:
+			e.Doc.SelectAll()
+			e.redraw()
+			return nil
+		case tcell.KeyCtrlX:
+			e.cutSelection()
+			return nil
+		case tcell.KeyCtrlV:
+			e.pasteClipboard()
+			return nil
 		case tcell.KeyLeft:
+			e.prepareMove(mod&tcell.ModShift != 0)
 			e.Doc.MoveWordLeft()
 			e.redraw()
 			return nil
 		case tcell.KeyRight:
+			e.prepareMove(mod&tcell.ModShift != 0)
 			e.Doc.MoveWordRight()
 			e.redraw()
 			return nil
@@ -224,6 +303,10 @@ func (e *Editor) handleKeys(event *tcell.EventKey) *tcell.EventKey {
 			e.toggleStyle(document.StyleStrike)
 			return nil
 		case 'a', 'A':
+			if e.Doc.ApplyActiveToSelection() {
+				e.redraw()
+				return nil
+			}
 			s := e.Doc.ActiveStyleFlags()
 			if s != document.StyleNone {
 				e.Doc.ApplyStyleToParagraph(s, true)
@@ -243,44 +326,75 @@ func (e *Editor) handleKeys(event *tcell.EventKey) *tcell.EventKey {
 		return nil
 	}
 
-	// Navigation
+	// Navigation. Shift extends the selection; a plain move clears it
+	// (Left / Right collapse it to its start / end).
+	shift := mod&tcell.ModShift != 0
 	switch event.Key() {
 	case tcell.KeyLeft:
-		e.Doc.MoveLeft()
+		if !shift && e.Doc.HasSelection() {
+			e.Doc.CollapseSelection(true)
+		} else {
+			e.prepareMove(shift)
+			e.Doc.MoveLeft()
+		}
 		e.redraw()
 		return nil
 	case tcell.KeyRight:
-		e.Doc.MoveRight()
+		if !shift && e.Doc.HasSelection() {
+			e.Doc.CollapseSelection(false)
+		} else {
+			e.prepareMove(shift)
+			e.Doc.MoveRight()
+		}
 		e.redraw()
 		return nil
 	case tcell.KeyUp:
+		e.prepareMove(shift)
 		e.Doc.MoveUp()
 		e.redraw()
 		return nil
 	case tcell.KeyDown:
+		e.prepareMove(shift)
 		e.Doc.MoveDown()
 		e.redraw()
 		return nil
 	case tcell.KeyHome:
-		// start of paragraph
-		e.Doc.GoToLine(e.Doc.CursorLine())
+		// Home = start of the wrapped line; Ctrl/Alt+Home = start of document
+		e.prepareMove(shift)
+		if mod&(tcell.ModCtrl|tcell.ModAlt) != 0 {
+			e.Doc.MoveDocStart()
+		} else {
+			e.Doc.MoveLineStart()
+		}
 		e.redraw()
 		return nil
 	case tcell.KeyEnd:
-		// end of paragraph
-		for {
-			before := e.Doc.CursorCol()
-			e.Doc.MoveRight()
-			if e.Doc.CursorCol() == before {
-				break
-			}
-			// stop if we moved to next paragraph
-			if e.Doc.CursorCol() == 1 && before > 1 {
-				e.Doc.MoveLeft()
-				break
-			}
+		// End = end of the wrapped line; Ctrl/Alt+End = end of document
+		e.prepareMove(shift)
+		if mod&(tcell.ModCtrl|tcell.ModAlt) != 0 {
+			e.Doc.MoveDocEnd()
+		} else {
+			e.Doc.MoveLineEnd()
 		}
 		e.redraw()
+		return nil
+	case tcell.KeyPgUp:
+		e.prepareMove(shift)
+		e.Doc.MovePage(-e.pageRows())
+		e.redraw()
+		return nil
+	case tcell.KeyPgDn:
+		e.prepareMove(shift)
+		e.Doc.MovePage(e.pageRows())
+		e.redraw()
+		return nil
+	case tcell.KeyInsert:
+		// Ctrl+Insert = copy, Shift+Insert = paste
+		if mod&tcell.ModCtrl != 0 {
+			e.copySelection()
+		} else if shift {
+			e.pasteClipboard()
+		}
 		return nil
 	case tcell.KeyEnter:
 		e.Doc.InsertRune('\n')
@@ -291,6 +405,10 @@ func (e *Editor) handleKeys(event *tcell.EventKey) *tcell.EventKey {
 		e.redraw()
 		return nil
 	case tcell.KeyDelete:
+		if shift {
+			e.cutSelection()
+			return nil
+		}
 		e.Doc.Delete()
 		e.redraw()
 		return nil
@@ -316,10 +434,50 @@ func (e *Editor) handleKeys(event *tcell.EventKey) *tcell.EventKey {
 }
 
 func (e *Editor) toggleStyle(s document.Style) {
-	// Only change the active typing style at the cursor.
-	// Does NOT restyle existing text. New characters use ActiveStyle.
-	// (Selection-based apply can land once we have a real selection range.)
-	e.Doc.ToggleStyle(s)
+	// With a selection the style is applied to (or removed from) the selected
+	// text. Otherwise it only changes the active typing style: new characters
+	// use it, existing text is untouched.
+	if !e.Doc.ToggleStyleOnSelection(s) {
+		e.Doc.ToggleStyle(s)
+	}
+	e.redraw()
+}
+
+// prepareMove starts or extends the selection (Shift held) or clears it, just
+// before the cursor moves.
+func (e *Editor) prepareMove(extend bool) {
+	if extend {
+		e.Doc.BeginSelection()
+	} else {
+		e.Doc.ClearSelection()
+	}
+}
+
+func (e *Editor) copySelection() {
+	n := e.Doc.SelectionLen()
+	if !e.Doc.Copy() {
+		e.flashStatus("Nothing selected")
+		return
+	}
+	e.redraw()
+	e.flashStatus(fmt.Sprintf("Copied %d characters", n))
+}
+
+func (e *Editor) cutSelection() {
+	n := e.Doc.SelectionLen()
+	if !e.Doc.Cut() {
+		e.flashStatus("Nothing selected")
+		return
+	}
+	e.redraw()
+	e.flashStatus(fmt.Sprintf("Cut %d characters", n))
+}
+
+func (e *Editor) pasteClipboard() {
+	if !e.Doc.Paste() {
+		e.flashStatus("Clipboard is empty")
+		return
+	}
 	e.redraw()
 }
 
@@ -346,46 +504,114 @@ func (e *Editor) showHelp() {
 	helpText := `[::b]GoWrite – Keyboard Shortcuts[::-]
 
 [yellow]Navigation[::-]
-  Arrow keys / Home / End
-  Ctrl+← / Ctrl+→     Word left / right
-  Alt+G  or  Ctrl+G   Go to line (paragraph)
+  Arrow keys            Move (↑/↓ follow wrapped lines)
+  Home / End            Start / end of the line
+  Ctrl+Home / Ctrl+End  Start / end of the document
+  PgUp / PgDn           Move one screen up / down
+  Ctrl+← / Ctrl+→       Word left / right
+  Alt+G  or  Ctrl+G     Go to line (paragraph)
+
+[yellow]Selection & clipboard[::-]
+  Shift+arrows/Home/End/PgUp/PgDn   Select
+  Shift+Ctrl+← / →      Select by word
+  Ctrl+A                Select all
+  Esc                   Clear the selection
+  Ctrl+C / Ctrl+Insert  Copy (Ctrl+C with nothing selected = exit prompt)
+  Ctrl+X / Shift+Delete Cut
+  Ctrl+V / Shift+Insert Paste
+  Typing, Backspace and Delete replace the selection.
+  Styles, colours and alignment apply to the selection.
 
 [yellow]Search[::-]
-  Alt+F  or  Ctrl+F   Find
-  Alt+H  or  Ctrl+H   Find & Replace
-  F3                  Find next
-  F4                  Find previous
+  Alt+F  or  Ctrl+F     Find
+  Alt+H  or  Ctrl+H     Find & Replace
+  F3 / F4               Find next / previous
 
 [yellow]Styling[::-]
-  Alt+B / Ctrl+B      Toggle Bold
-  Alt+I / Ctrl+I      Toggle Italic
-  Alt+U / Ctrl+U      Toggle Underline
-  Alt+K               Toggle Strikethrough
-  Alt+C               Text colour
-  Alt+Y               Background colour
-  Alt+L / E / R       Align left / center / right (current paragraph)
-  New text uses the active style + colours (see status bar)
+  Alt+B / Ctrl+B        Toggle Bold
+  Alt+I / Ctrl+I        Toggle Italic
+  Alt+U / Ctrl+U        Toggle Underline
+  Alt+K                 Toggle Strikethrough
+  Alt+C                 Text colour
+  Alt+Y                 Background colour
+  Alt+L / E / R         Align left / center / right
 
 [yellow]File[::-]
-  Alt+N               New document
-  Alt+O               Open document
-  Alt+S  or  Ctrl+S   Save document
+  Alt+N                 New document
+  Alt+O                 Open document
+  Alt+S / Ctrl+S        Save document
 
 [yellow]Other[::-]
-  ?  or  Alt+/        This help
-  Esc                 Quit (asks if dirty)
+  ?  or  Alt+/          This help
+  Esc                   Quit (asks if dirty); clears a selection first
 
-Word wrap is always on. Enter starts a new paragraph.
-Styles use terminal attributes – your font must support them.`
+Word wrap is always on and follows the window size.
+Alignment applies to every wrapped line of a paragraph.
+Enter starts a new paragraph.
+New text uses the active style + colours (status bar).
+`
 
-	modal := tview.NewModal().
+	tv := tview.NewTextView().
+		SetDynamicColors(true).
 		SetText(helpText).
-		AddButtons([]string{"OK"}).
-		SetDoneFunc(func(buttonIndex int, buttonLabel string) {
-			e.App.SetRoot(e.Root, true).SetFocus(e.View)
-		})
-	uitheme.StyleModal(modal, "Help")
-	e.App.SetRoot(modal, true).SetFocus(modal)
+		SetScrollable(true).
+		SetWrap(true).
+		SetWordWrap(true)
+	tv.SetBackgroundColor(uitheme.Panel)
+	tv.SetTextColor(uitheme.Text)
+	uitheme.Paint(tv, "Help")
+
+	// Footer hint
+	hint := tview.NewTextView().
+		SetTextAlign(tview.AlignCenter).
+		SetDynamicColors(true).
+		SetText("[gray]↑↓ scroll  ·  Esc or Enter to close[::-]")
+	hint.SetBackgroundColor(uitheme.Panel)
+
+	frame := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(tv, 0, 1, true).
+		AddItem(hint, 1, 0, false)
+
+	close := func() {
+		e.App.SetRoot(e.Root, true).SetFocus(e.View)
+	}
+
+	frame.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		switch event.Key() {
+		case tcell.KeyEscape, tcell.KeyEnter:
+			close()
+			return nil
+		}
+		if event.Rune() == 'q' || event.Rune() == 'Q' {
+			close()
+			return nil
+		}
+		return event
+	})
+	tv.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		switch event.Key() {
+		case tcell.KeyEscape, tcell.KeyEnter:
+			close()
+			return nil
+		}
+		if event.Rune() == 'q' || event.Rune() == 'Q' {
+			close()
+			return nil
+		}
+		return event
+	})
+
+	// Centered panel that fits typical terminals without going off-screen
+	pages := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(nil, 0, 1, false).
+		AddItem(tview.NewFlex().
+			AddItem(nil, 0, 1, false).
+			AddItem(frame, 64, 0, true).
+			AddItem(nil, 0, 1, false), 0, 3, true).
+		AddItem(nil, 0, 1, false)
+	pages.SetBackgroundColor(uitheme.Ink)
+
+	e.App.SetRoot(pages, true).SetFocus(tv)
 }
 
 func (e *Editor) newDocument() {
@@ -464,10 +690,13 @@ func (e *Editor) showColorPicker(background bool) {
 		}
 		v := val // capture
 		list.AddItem(label, sec, 0, func() {
-			if background {
-				e.Doc.SetActiveBg(v)
-			} else {
-				e.Doc.SetActiveFg(v)
+			// With a selection, recolour it; otherwise set the typing colour.
+			if !e.Doc.SetSelectionColor(background, v) {
+				if background {
+					e.Doc.SetActiveBg(v)
+				} else {
+					e.Doc.SetActiveFg(v)
+				}
 			}
 			e.redraw()
 			e.App.SetRoot(e.Root, true).SetFocus(e.View)
