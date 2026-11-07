@@ -49,9 +49,6 @@ func (e *Editor) newDocument() {
 	e.redraw()
 }
 
-
-// centredModal wraps a primitive in a hollow Flex so it appears as a centred
-// box of the requested width and height.
 func centredModal(p tview.Primitive, width, height int) tview.Primitive {
 	return tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(nil, 0, 1, false).

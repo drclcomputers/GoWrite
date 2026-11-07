@@ -5,16 +5,6 @@
 
 package document
 
-// This file is the layout layer: it turns paragraphs into wrapped "visual
-// lines", renders them (with per-line alignment and the caret), and provides
-// cursor movement that works on those visual lines instead of whole
-// paragraphs.
-//
-// Wrapping is done here rather than by tview so that the document model knows
-// exactly which screen row every character lands on. That is what makes
-// aligned wrapped paragraphs, Up/Down, Home/End, Page Up/Down and
-// scroll-to-cursor possible.
-
 import (
 	"sort"
 	"strings"
@@ -24,26 +14,14 @@ import (
 )
 
 const (
-	// tabWidth is the number of cells a tab occupies on screen.
-	tabWidth = 4
-
-	// Caret is drawn as a highlighted cell (or a block after the last char).
-	caretOpen  = "[-:-:-][black:#f0d090]"
+	tabWidth  = 4
+	caretOpen = "[-:-:-][black:#f0d090]"
 	caretClose = "[-:-:-]"
 	caretGlyph = "▌"
-
-	// Selected text is drawn in these colours (attributes such as bold are kept).
-	selFg = "#e8ecf4"
-	selBg = "#3e5c7a"
+	selFg     = "#e8ecf4"
+	selBg     = "#3e5c7a"
 )
 
-// visualLine is one wrapped row of a paragraph, expressed as rune offsets
-// into the paragraph's plain text.
-//
-//	Start  first rune on the row
-//	End    one past the last rune on the row (includes trailing blanks that
-//	       "hang" off the end of a wrapped line)
-//	CEnd   one past the last visible (non-blank) rune; used for alignment
 type visualLine struct {
 	Start int
 	End   int
@@ -70,9 +48,6 @@ func widthOf(rs []rune) int {
 }
 
 // wrapRunes splits text into visual lines no wider than width cells.
-// Lines break after blanks where possible; a word longer than a whole line is
-// broken mid-word. Blanks at a break hang off the end of the line instead of
-// pushing the next word over. An empty paragraph is one empty line.
 func wrapRunes(rs []rune, width int) []visualLine {
 	if width < 1 {
 		width = 1
@@ -92,7 +67,6 @@ func wrapRunes(rs []rune, width int) []visualLine {
 			r := rs[i]
 			w := cellWidth(r)
 			if isBlank(r) {
-				// Allow one hanging cell past width; beyond that, break.
 				if i > start && lineW+w > width+1 {
 					end = i
 					break
@@ -103,8 +77,6 @@ func wrapRunes(rs []rune, width int) []visualLine {
 				}
 				continue
 			}
-			// (A line that is only leading blanks may break before a word
-			// that does not fit after them, so lines never exceed width.)
 			if (hasContent || lineW > 0) && lineW+w > width {
 				if breakAt > start {
 					end = breakAt
@@ -188,19 +160,14 @@ func alignPad(a Align, wrapWidth, contentWidth int) int {
 	return 0
 }
 
-// wrapWidth is the widest a line of text may be. Two cells are kept free on
-// the right: one for the caret block and one of slack, so a full line plus
-// the caret can never spill onto the next screen row.
 func (d *Document) wrapWidth() int {
-	w := d.DisplayWidth - 2
+	w := d.Page.Width
 	if w < 1 {
 		w = 1
 	}
 	return w
 }
 
-// displayText prepares text for tview: underline decoration, tag escaping
-// (so "[red]" typed by the user is shown literally) and tab expansion.
 func displayText(s string, style Style) string {
 	s = decorateRunText(s, style)
 	s = tview.Escape(s)
@@ -208,8 +175,6 @@ func displayText(s string, style Style) string {
 }
 
 // writeRange writes the runes [from, to) of paragraph p with their styles.
-// The rune at offset caret is drawn as the caret cell, and runes in
-// [selFrom, selTo) are drawn highlighted. Pass -1 to turn either off.
 func writeRange(b *strings.Builder, p Paragraph, from, to, caret, selFrom, selTo int) {
 	pos := 0
 	for _, run := range p.Runs {
@@ -222,7 +187,6 @@ func writeRange(b *strings.Builder, p Paragraph, from, to, caret, selFrom, selTo
 		lo := max(from, rs) - rs
 		hi := min(to, re) - rs
 
-		// Cut the visible part of this run wherever the look changes.
 		cuts := []int{lo, hi}
 		for _, c := range []int{caret - rs, caret - rs + 1, selFrom - rs, selTo - rs} {
 			if c > lo && c < hi {
@@ -242,7 +206,6 @@ func writeRange(b *strings.Builder, p Paragraph, from, to, caret, selFrom, selTo
 			switch {
 			case caret >= 0 && abs == caret:
 				if seg[0] == '\t' {
-					// Highlight one cell of the tab, not all of it.
 					b.WriteString(caretOpen + " " + caretClose)
 					b.WriteString(strings.Repeat(" ", tabWidth-1))
 				} else {
@@ -265,26 +228,59 @@ func writeRange(b *strings.Builder, p Paragraph, from, to, caret, selFrom, selTo
 	}
 }
 
-// render builds the tview-tagged text for the whole document, one screen row
-// per visual line, and returns it together with the screen row (0-based) the
-// cursor is on. Caller holds the lock.
+// render builds the tview-tagged text, chunking it into pages.
 func (d *Document) render(withCaret bool) (string, int) {
-	var b strings.Builder
 	if len(d.Paragraphs) == 0 {
 		if withCaret {
-			b.WriteString(caretOpen + caretGlyph + caretClose)
+			return caretOpen + caretGlyph + caretClose, 0
 		}
-		return b.String(), 0
+		return "", 0
 	}
 
-	ww := d.wrapWidth()
-	maxCol := d.DisplayWidth - 1 // never draw further right than this column
+	ps := d.Page
+	if ps.Width == 0 {
+		ps = DefaultA4Portrait()
+	}
+
+	var b strings.Builder
+	// Calculate left margin to center the page on screen
+	margin := (d.DisplayWidth - ps.Width - 2) / 2
+	if margin < 0 {
+		margin = 0
+	}
+
+	writeMargin := func() {
+		b.WriteString(strings.Repeat(" ", margin))
+	}
+
+	drawPageTop := func() {
+		writeMargin()
+		b.WriteString("┌" + strings.Repeat("─", ps.Width) + "┐\n")
+	}
+	drawPageBottom := func() {
+		writeMargin()
+		b.WriteString("└" + strings.Repeat("─", ps.Width) + "┘\n")
+	}
+
 	row, cursorRow := 0, 0
+	pageRows := 0
+
+	drawPageTop()
+	row++
+
 	sp, so, ep, eo, selOK := d.selectionRange()
 
 	for pi, p := range d.Paragraphs {
+		if p.PageBreak && pageRows > 0 {
+			drawPageBottom()
+			b.WriteString("\n")
+			drawPageTop()
+			row += 2
+			pageRows = 0
+		}
+
 		rs := []rune(plainOf(p))
-		lines := wrapRunes(rs, ww)
+		lines := wrapRunes(rs, ps.Width)
 
 		cur, curLine := -1, -1
 		if pi == d.CursorPara {
@@ -292,8 +288,6 @@ func (d *Document) render(withCaret bool) (string, int) {
 			curLine = lineIndexFor(lines, cur)
 		}
 
-		// Which part of this paragraph is selected, and does the selection
-		// continue past its end (over the paragraph break)?
 		selFrom, selTo, breakSel := -1, -1, false
 		if selOK && pi >= sp && pi <= ep {
 			from, to := 0, len(rs)
@@ -310,9 +304,15 @@ func (d *Document) render(withCaret bool) (string, int) {
 		}
 
 		for li, ln := range lines {
-			if row > 0 {
-				b.WriteByte('\n')
+			if pageRows >= ps.Height {
+				drawPageBottom()
+				b.WriteString("\n")
+				drawPageTop()
+				row += 2
+				pageRows = 0
 			}
+
+			var lineBuf strings.Builder
 			caret := -1
 			hasCaret := false
 			if li == curLine {
@@ -322,17 +322,15 @@ func (d *Document) render(withCaret bool) (string, int) {
 					caret = cur
 				}
 			}
-			row++
 
 			cw := widthOf(rs[ln.Start:ln.CEnd])
-			pad := alignPad(p.Align, ww, cw)
+			pad := alignPad(p.Align, ps.Width, cw)
 			if pad > 0 {
-				b.WriteString(strings.Repeat(" ", pad))
+				lineBuf.WriteString(strings.Repeat(" ", pad))
 			}
 
-			// Show hanging blanks only as far as they fit on screen.
 			vEnd := ln.CEnd
-			room := maxCol - pad - cw
+			room := ps.Width - pad - cw
 			for vEnd < ln.End {
 				w := cellWidth(rs[vEnd])
 				if w > room {
@@ -342,35 +340,61 @@ func (d *Document) render(withCaret bool) (string, int) {
 				vEnd++
 			}
 
-			writeRange(&b, p, ln.Start, vEnd, caret, selFrom, selTo)
+			writeRange(&lineBuf, p, ln.Start, vEnd, caret, selFrom, selTo)
 			glyph := hasCaret && (caret < ln.Start || caret >= vEnd)
 			if glyph {
-				// Caret is past the visible text (end of paragraph, or in
-				// clipped blanks): draw it as a block after the text.
-				b.WriteString(caretOpen + caretGlyph + caretClose)
+				lineBuf.WriteString(caretOpen + caretGlyph + caretClose)
 			}
 
-			// Show a selected paragraph break as one highlighted blank at the
-			// end of the paragraph, if there is room for it.
 			if breakSel && li == len(lines)-1 {
 				used := pad + cw + widthOf(rs[ln.CEnd:vEnd])
 				if glyph {
 					used++
 				}
-				if used+1 <= d.DisplayWidth {
+				if used+1 <= ps.Width {
 					open, cl := styleTags(StyleNone, selFg, selBg)
-					b.WriteString(open + " " + cl)
+					lineBuf.WriteString(open + " " + cl)
 				}
 			}
+
+			// Draw the actual line of text inside the page border
+			writeMargin()
+			b.WriteString("│")
+			b.WriteString(lineBuf.String())
+
+			// Pad the rest of the page width
+			lineWidth := pad + widthOf(rs[ln.Start:vEnd])
+			if glyph {
+				lineWidth++
+			}
+			if breakSel && li == len(lines)-1 {
+				lineWidth++
+			}
+			// Note: exact width calculation for tags is tricky, but since we wrap to ps.Width,
+			// it shouldn't overflow.
+			if lineWidth < ps.Width {
+				b.WriteString(strings.Repeat(" ", ps.Width-lineWidth))
+			}
+			b.WriteString("│\n")
+
+			row++
+			pageRows++
 		}
 	}
-	// Final reset so styles cannot bleed past the last cell.
-	b.WriteString("[-:-:-]")
+
+	// Fill remaining page rows with blank lines
+	for pageRows < ps.Height {
+		writeMargin()
+		b.WriteString("│" + strings.Repeat(" ", ps.Width) + "│\n")
+		row++
+		pageRows++
+	}
+
+	drawPageBottom()
+
 	return b.String(), cursorRow
 }
 
-// StyledText returns a tview-friendly string with colour/style tags for
-// display, wrapped to DisplayWidth and aligned per line.
 func (d *Document) StyledText() string {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
@@ -378,8 +402,6 @@ func (d *Document) StyledText() string {
 	return s
 }
 
-// StyledTextWithCursor is like StyledText but also draws a visible caret at
-// the current position.
 func (d *Document) StyledTextWithCursor() string {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
@@ -387,24 +409,46 @@ func (d *Document) StyledTextWithCursor() string {
 	return s
 }
 
-// CursorRow returns the 0-based screen row (visual line, counted from the top
-// of the document) that the cursor is on.
+// CursorRow returns the visual screen row.
 func (d *Document) CursorRow() int {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
-	ww := d.wrapWidth()
-	row := 0
+	ps := d.Page
+	if ps.Width == 0 {
+		ps = DefaultA4Portrait()
+	}
+
+	row := 1 // Top border
+	pageRows := 0
+
 	for pi, p := range d.Paragraphs {
-		rs := []rune(plainOf(p))
-		lines := wrapRunes(rs, ww)
-		if pi == d.CursorPara {
-			off := min(max(d.CursorOff, 0), len(rs))
-			return row + lineIndexFor(lines, off)
+		if p.PageBreak && pageRows > 0 {
+			row += 2 // Bottom border + gap + top border
+			pageRows = 0
 		}
-		row += len(lines)
+
+		rs := []rune(plainOf(p))
+		lines := wrapRunes(rs, ps.Width)
+
+		for li := range lines {
+			if pageRows >= ps.Height {
+				row += 2
+				pageRows = 0
+			}
+
+			if pi == d.CursorPara {
+				off := min(max(d.CursorOff, 0), len(rs))
+				if li == lineIndexFor(lines, off) {
+					return row
+				}
+			}
+			row++
+			pageRows++
+		}
 	}
 	return row
 }
+
 
 // ---------------------------------------------------------------------------
 // Navigation on visual lines

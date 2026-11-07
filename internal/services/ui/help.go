@@ -7,10 +7,11 @@ import (
 
 func (e *Editor) showHelp() {
 	helpText := `[#f0d090::b]EVERY DAY[-]
-  Arrows          Move
+  Arrows          Move cursor
   Shift+Arrows    Select text
   Type            Insert text
   Alt+Enter       Format text
+  Alt+P           Page setup
   Alt+S           Save
   Alt+F           Find
   ?               This help
@@ -21,15 +22,20 @@ func (e *Editor) showHelp() {
   Alt+I           Toggle Italic
   Alt+U           Toggle Underline
   Alt+K           Toggle Strikethrough
-  Alt+A           Apply active style to paragraph
+  Alt+A           Apply active style to selection
+  Alt+C           Text color
+  Alt+Y           Background color
+  Alt+L / E / R   Align left / center / right
+  Alt+Shift+P     Insert page break
 
 [#8ecae6::b]LESS OFTEN[-]  (Alt + the letter)
-  O open     N new     G go to line     H replace
-  C copy     X cut     V paste          Z undo
-  Shift+Z redo
+  O open          N new            G go to line       H replace
+  Shift+C copy    Shift+X cut      Shift+V paste      Shift+A select all
+  Z undo          Shift+Z redo
+  F3 / F4         Find next / previous
 
-[#8aa0b8]Alt+Shift+←/→ moves between panels. Plain Alt+arrow is swallowed by the terminal.[-]
-Everything else is Alt, or a plain key. F3 / F4 repeat a search.[-]
+[#8aa0b8]Alt+Shift+←/→ selects whole words. Plain Alt+arrow is swallowed by the terminal.[-]
+Everything else is Alt, or a plain key.[-]
 
 [#5c6b7a]Esc closes this.[-]`
 
@@ -48,10 +54,7 @@ Everything else is Alt, or a plain key. F3 / F4 repeat a search.[-]
 
 	textView.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		switch event.Key() {
-		case tcell.KeyEscape:
-			e.App.SetRoot(e.Root, true).SetFocus(e.View)
-			return nil
-		case tcell.KeyEnter:
+		case tcell.KeyEscape, tcell.KeyEnter:
 			e.App.SetRoot(e.Root, true).SetFocus(e.View)
 			return nil
 		}

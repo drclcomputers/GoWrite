@@ -192,3 +192,12 @@ func (d *Document) deleteRange(from, to int) {
 	}
 	p.Runs = newRuns
 }
+
+func (d *Document) InsertPageBreak() {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.ensureCursor()
+	d.pushHistory()
+	d.Paragraphs[d.CursorPara].PageBreak = true
+	d.Dirty = true
+}

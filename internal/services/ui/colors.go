@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"gowrite/internal/services/document"
 	"gowrite/internal/services/uitheme"
 	"strconv"
 
@@ -10,34 +11,78 @@ import (
 )
 
 func (e *Editor) showColorPicker(background bool) {
-	form := tview.NewForm()
-	title := "Text color"
+	title := "Text Colour"
 	if background {
-		title = "Background color"
+		title = "Background Colour"
 	}
 
-	var currentColor string
+	pages := tview.NewPages()
+	palette := document.ColorPalette
+	const cols = 5
+
 	fg, bg := e.Doc.ActiveColors()
+	current := fg
 	if background {
-		currentColor = bg
-	} else {
-		currentColor = fg
-	}
-	if currentColor == "" {
-		currentColor = "#000000"
+		current = bg
 	}
 
-	var r, g, b int64
-	if len(currentColor) == 7 && currentColor[0] == '#' {
-		r, _ = strconv.ParseInt(currentColor[1:3], 16, 0)
-		g, _ = strconv.ParseInt(currentColor[3:5], 16, 0)
-		b, _ = strconv.ParseInt(currentColor[5:7], 16, 0)
+	// --- PAGE 1: GRID PALETTE ---
+	table := tview.NewTable().
+		SetBorders(false).
+		SetSelectable(true, true)
+
+	selectedRow, selectedCol := 0, 0
+	for i, c := range palette {
+		row, col := i/cols, i%cols
+		label := c.Name
+		if c.Value == current {
+			label = "* " + c.Name
+			selectedRow, selectedCol = row, col
+		}
+		cell := tview.NewTableCell(" " + label + " ").
+			SetAlign(tview.AlignCenter).
+			SetExpansion(1)
+		if c.Value == "" {
+			cell.SetBackgroundColor(uitheme.Field)
+			cell.SetTextColor(uitheme.Text)
+		} else {
+			rgb := parseHexColor(c.Value)
+			cell.SetBackgroundColor(rgb)
+			cell.SetTextColor(contrastColor(rgb))
+		}
+		table.SetCell(row, col, cell)
 	}
+
+	customRow, customCol := len(palette)/cols, len(palette)%cols
+	customCell := tview.NewTableCell(" [ Custom... ] ").
+		SetAlign(tview.AlignCenter).
+		SetExpansion(1).
+		SetBackgroundColor(uitheme.Line).
+		SetTextColor(uitheme.Ink)
+	table.SetCell(customRow, customCol, customCell)
+
+	table.Select(selectedRow, selectedCol)
+
+	gridPage := tview.NewFlex().SetDirection(tview.FlexRow).AddItem(table, 0, 1, true)
+	gridPage.SetBackgroundColor(uitheme.Ink)
+	pages.AddPage("grid", gridPage, true, true)
+
+	// --- PAGE 2: CUSTOM RGB/HEX FORM ---
+	var r, g, b int64
+	startHex := current
+	if len(startHex) != 7 || startHex[0] != '#' {
+		startHex = "#000000"
+	}
+	r, _ = strconv.ParseInt(startHex[1:3], 16, 0)
+	g, _ = strconv.ParseInt(startHex[3:5], 16, 0)
+	b, _ = strconv.ParseInt(startHex[5:7], 16, 0)
 
 	preview := tview.NewTextView()
 	preview.SetBackgroundColor(tcell.NewRGBColor(int32(r), int32(g), int32(b)))
-	preview.SetBorder(true).SetTitle(" Preview ")
+	preview.SetBorder(true).SetTitle(" Preview ").SetTitleAlign(tview.AlignCenter)
+	preview.SetBorderColor(uitheme.Line).SetTitleColor(uitheme.Amber)
 
+	customForm := tview.NewForm()
 	updating := false
 
 	redInput := tview.NewInputField().
@@ -72,7 +117,7 @@ func (e *Editor) showColorPicker(background bool) {
 
 	hexInput := tview.NewInputField().
 		SetLabel("Hex (#RRGGBB): ").
-		SetText(currentColor).
+		SetText(startHex).
 		SetFieldWidth(9)
 
 	updatePreview := func() {
@@ -121,39 +166,99 @@ func (e *Editor) showColorPicker(background bool) {
 	blueInput.SetDoneFunc(func(key tcell.Key) { if key == tcell.KeyEnter || key == tcell.KeyTab { updatePreview() } })
 	hexInput.SetDoneFunc(func(key tcell.Key) { if key == tcell.KeyEnter || key == tcell.KeyTab { updateFromHex() } })
 
-	form.AddFormItem(redInput).
+	customForm.AddFormItem(redInput).
 		AddFormItem(greenInput).
 		AddFormItem(blueInput).
 		AddFormItem(hexInput)
 
-	form.AddButton("Apply", func() {
+	applyCustom := func() {
 		hex := hexInput.GetText()
 		if !e.Doc.SetSelectionColor(background, hex) {
 			if background { e.Doc.SetActiveBg(hex) } else { e.Doc.SetActiveFg(hex) }
 		}
 		e.App.SetRoot(e.Root, true).SetFocus(e.View)
 		e.redraw()
-	})
-	form.AddButton("Cancel", func() {
-		e.App.SetRoot(e.Root, true).SetFocus(e.View)
-	})
+	}
 
-	uitheme.StyleForm(form, title)
-	preview.SetBorderColor(uitheme.Line).SetTitleColor(uitheme.Amber).SetTitleAlign(tview.AlignCenter)
+	customForm.AddButton("Apply", applyCustom)
+	customForm.AddButton("Back", func() { pages.SwitchToPage("grid"); e.App.SetFocus(table) })
+
+	customForm.SetBorder(false)
+	customForm.SetBackgroundColor(uitheme.Panel)
 
 	topRow := tview.NewFlex().
-		AddItem(form, 0, 3, true).
+		AddItem(customForm, 0, 3, true).
 		AddItem(preview, 0, 1, false)
 
-	container := tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(topRow, 0, 1, true)
-	container.SetBackgroundColor(uitheme.Ink)
+	customPage := tview.NewFlex().SetDirection(tview.FlexRow).AddItem(topRow, 0, 1, true)
+	customPage.SetBackgroundColor(uitheme.Ink)
+	pages.AddPage("custom", customPage, true, false)
 
+	// --- ACTIONS ---
+	applyGrid := func() {
+		row, col := table.GetSelection()
+		if row == customRow && col == customCol {
+			pages.SwitchToPage("custom")
+			e.App.SetFocus(customForm)
+			return
+		}
+		idx := row*cols + col
+		if idx >= 0 && idx < len(palette) {
+			c := palette[idx]
+			if !e.Doc.SetSelectionColor(background, c.Value) {
+				if background { e.Doc.SetActiveBg(c.Value) } else { e.Doc.SetActiveFg(c.Value) }
+			}
+			e.App.SetRoot(e.Root, true).SetFocus(e.View)
+			e.redraw()
+		}
+	}
+	table.SetSelectedFunc(func(row, col int) { applyGrid() })
+	table.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Key() == tcell.KeyEscape {
+			e.App.SetRoot(e.Root, true).SetFocus(e.View)
+			return nil
+		}
+		return event
+	})
+
+	customForm.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Key() == tcell.KeyEscape {
+			pages.SwitchToPage("grid")
+			e.App.SetFocus(table)
+			return nil
+		}
+		return event
+	})
+
+	container := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(pages, 0, 1, true)
+	container.SetBackgroundColor(uitheme.Ink)
 	container.SetBorder(true).
 		SetBorderColor(uitheme.Line).
-		SetTitle(" Color ").
+		SetTitle(" " + title + " ").
 		SetTitleColor(uitheme.Amber).
 		SetTitleAlign(tview.AlignCenter)
 
-	e.App.SetRoot(container, true).SetFocus(form)
+	modal := centredModal(container, 62, 12)
+	e.App.SetRoot(modal, true).SetFocus(table)
+}
+
+func parseHexColor(s string) tcell.Color {
+	if len(s) != 7 || s[0] != '#' {
+		return tcell.ColorDefault
+	}
+	var r, g, b int
+	if _, err := fmt.Sscanf(s, "#%02x%02x%02x", &r, &g, &b); err != nil {
+		return tcell.ColorDefault
+	}
+	return tcell.NewRGBColor(int32(r), int32(g), int32(b))
+}
+
+func contrastColor(c tcell.Color) tcell.Color {
+	r, g, b := c.RGB()
+	lum := 0.299*float64(r) + 0.587*float64(g) + 0.114*float64(b)
+	if lum > 140 {
+		return tcell.ColorBlack
+	}
+	return tcell.ColorWhite
 }

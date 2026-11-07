@@ -116,20 +116,24 @@ func (e *Editor) refreshUI() {
 
 	dirty := ""
 	if e.Doc.IsDirty() {
-		dirty = " *"
+		dirty = "●"
 	}
-	// 1. Update View Title (embedded in border)
-	e.View.SetTitle(fmt.Sprintf(" GoWrite - %s%s ", name, dirty))
 
-	// 2. Update Top Bar (Word processor stats + style)
+	// Update View Title
+	e.View.SetTitle(fmt.Sprintf(" %s %s ", name, dirty))
+
+	// Update Top Bar
 	line := e.Doc.CursorLine()
 	col := e.Doc.CursorCol()
 	words := e.Doc.WordCount()
+	chars := e.Doc.CharCount()
 	style := e.Doc.StyleString()
-	e.TopBar.SetText(fmt.Sprintf(" [#f0d090]Ln %d, Col %d[::-]  [gray]|[::-]  Words: %d  [gray]|[::-]  %s", line, col, words, style))
+	e.TopBar.SetText(fmt.Sprintf(
+		" [#5ec8c8]Ln[::-] [#f0d090]%d[::-]  [#5ec8c8]Col[::-] [#f0d090]%d[::-]   [white]|[::-]   [#5ec8c8]Words:[::-] [#f0d090]%d[::-]  [#5ec8c8]Chars:[::-] [#f0d090]%d[::-]   [white]|[::-]   [#5ec8c8]Style[::-] [#ffffff]-[::-] [#f0d090]%s[::-]",
+		line, col, words, chars, style,
+	))
 
-	// 3. Update Status Bar (Amber for keys, white for descriptions)
-	e.Status.SetText(" [teal]Document[::-]    [#f0d090]Alt+Enter[::-] format    [#f0d090]Alt+S[::-] save    [#f0d090]Alt+F[::-] find    [#f0d090]?[::-] help")
+	e.Status.SetText(" [#7dcea0]Document[::-]    [#8aa0b8]type[-] edit    [#f0d090]Alt+Enter[::-] [#ffffff]format[::-]    [#f0d090]Alt+S[::-] [#ffffff]save[::-]    [#f0d090]Alt+F[::-] [#ffffff]find[::-]    [#f0d090]?[::-] [#ffffff]help[::-]")
 }
 
 func (e *Editor) Mount() {

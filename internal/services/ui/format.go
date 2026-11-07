@@ -9,128 +9,84 @@ import (
 )
 
 func (e *Editor) showFormatDialog() {
-	container := tview.NewFlex()
+	form := tview.NewForm()
 
-	// Left Column - Content & Alignment
-	leftForm := tview.NewForm()
-
-	// Just showing read-only text preview here
-	leftForm.AddInputField("Text", e.Doc.CurrentPlain(), 0, nil, nil)
-
-	// Align
+	// Alignment
 	alignIndex := 0
 	switch e.Doc.CurrentAlign() {
-	case document.AlignCenter: alignIndex = 1
-	case document.AlignRight: alignIndex = 2
+	case document.AlignCenter:
+		alignIndex = 1
+	case document.AlignRight:
+		alignIndex = 2
 	}
-	leftForm.AddDropDown("Align", []string{"Left", "Center", "Right"}, alignIndex, func(option string, _ int) {
+	form.AddDropDown("Align", []string{"Left", "Center", "Right"}, alignIndex, func(option string, _ int) {
 		switch option {
-		case "Left": e.Doc.SetParagraphAlign(document.AlignLeft)
-		case "Center": e.Doc.SetParagraphAlign(document.AlignCenter)
-		case "Right": e.Doc.SetParagraphAlign(document.AlignRight)
+		case "Left":
+			e.Doc.SetParagraphAlign(document.AlignLeft)
+		case "Center":
+			e.Doc.SetParagraphAlign(document.AlignCenter)
+		case "Right":
+			e.Doc.SetParagraphAlign(document.AlignRight)
 		}
 	})
-	uitheme.StyleForm(leftForm, "Content")
 
-	// Right Column - Styling
-	rightForm := tview.NewForm()
-	activeStyle := e.Doc.ActiveStyleFlags()
-
-	rightForm.AddCheckbox("Bold", activeStyle&document.StyleBold != 0, func(checked bool) {
-		if checked { e.Doc.SetActiveStyle(activeStyle | document.StyleBold) } else { e.Doc.SetActiveStyle(activeStyle &^ document.StyleBold) }
-	})
-	rightForm.AddCheckbox("Italic", activeStyle&document.StyleItalic != 0, func(checked bool) {
-		if checked { e.Doc.SetActiveStyle(activeStyle | document.StyleItalic) } else { e.Doc.SetActiveStyle(activeStyle &^ document.StyleItalic) }
-	})
-	rightForm.AddCheckbox("Underline", activeStyle&document.StyleUnderline != 0, func(checked bool) {
-		if checked { e.Doc.SetActiveStyle(activeStyle | document.StyleUnderline) } else { e.Doc.SetActiveStyle(activeStyle &^ document.StyleUnderline) }
-	})
-	rightForm.AddCheckbox("Strikethrough", activeStyle&document.StyleStrike != 0, func(checked bool) {
-		if checked { e.Doc.SetActiveStyle(activeStyle | document.StyleStrike) } else { e.Doc.SetActiveStyle(activeStyle &^ document.StyleStrike) }
-	})
-	uitheme.StyleForm(rightForm, "Style")
-
-	// Color Form
-	colorForm := tview.NewForm()
-	colorForm.AddButton("Text Color", func() { e.showColorPicker(false) })
-	colorForm.AddButton("Background Color", func() { e.showColorPicker(true) })
-	uitheme.StyleForm(colorForm, "Colors")
-
-	leftColumn := tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(leftForm, 0, 1, false)
-
-	rightColumn := tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(rightForm, 0, 3, false).
-		AddItem(colorForm, 0, 2, false)
-
-	columns := tview.NewFlex().
-		AddItem(leftColumn, 0, 1, false).
-		AddItem(rightColumn, 0, 1, false)
-
-	// Button bar mimicking GoSheet
-	buttonBar := tview.NewFlex().SetDirection(tview.FlexRow)
-	buttonText := tview.NewTextView().
-		SetText(" [#f0d090]Alt+Shift+←/→[-] section    [#f0d090]Tab[-] next field    [#f0d090]Alt+S[-] apply & close    [#f0d090]Esc[-] cancel").
-		SetDynamicColors(true).
-		SetTextAlign(tview.AlignCenter)
-	buttonText.SetBackgroundColor(tcell.NewRGBColor(14, 17, 26))
-	buttonBar.AddItem(buttonText, 1, 0, false)
-
-	container = tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(columns, 0, 1, true).
-		AddItem(buttonBar, 1, 0, false)
-	container.SetBackgroundColor(tcell.NewRGBColor(10, 12, 18))
-
-	container.SetBorder(true).
-		SetTitle(" Format Text ").
-		SetTitleAlign(tview.AlignCenter).
-		SetTitleColor(tcell.NewRGBColor(240, 208, 144)).
-		SetBorderColor(tcell.NewRGBColor(70, 160, 170))
-
-	allForms := []*tview.Form{leftForm, rightForm, colorForm}
-	currentFormIndex := 0
-
-	markSection := func(forms []*tview.Form, active int) {
-		for i, f := range forms {
-			if i == active {
-				f.SetBorderColor(tcell.NewRGBColor(240, 208, 144))
-				continue
-			}
-			f.SetBorderColor(tcell.NewRGBColor(70, 160, 170))
+	// Styles
+	form.AddCheckbox("Bold", e.Doc.ActiveStyleFlags()&document.StyleBold != 0, func(checked bool) {
+		if checked {
+			e.Doc.SetActiveStyle(e.Doc.ActiveStyleFlags() | document.StyleBold)
+		} else {
+			e.Doc.SetActiveStyle(e.Doc.ActiveStyleFlags() &^ document.StyleBold)
 		}
-	}
-	markSection(allForms, 0)
+	})
+	form.AddCheckbox("Italic", e.Doc.ActiveStyleFlags()&document.StyleItalic != 0, func(checked bool) {
+		if checked {
+			e.Doc.SetActiveStyle(e.Doc.ActiveStyleFlags() | document.StyleItalic)
+		} else {
+			e.Doc.SetActiveStyle(e.Doc.ActiveStyleFlags() &^ document.StyleItalic)
+		}
+	})
+	form.AddCheckbox("Underline", e.Doc.ActiveStyleFlags()&document.StyleUnderline != 0, func(checked bool) {
+		if checked {
+			e.Doc.SetActiveStyle(e.Doc.ActiveStyleFlags() | document.StyleUnderline)
+		} else {
+			e.Doc.SetActiveStyle(e.Doc.ActiveStyleFlags() &^ document.StyleUnderline)
+		}
+	})
+	form.AddCheckbox("Strikethrough", e.Doc.ActiveStyleFlags()&document.StyleStrike != 0, func(checked bool) {
+		if checked {
+			e.Doc.SetActiveStyle(e.Doc.ActiveStyleFlags() | document.StyleStrike)
+		} else {
+			e.Doc.SetActiveStyle(e.Doc.ActiveStyleFlags() &^ document.StyleStrike)
+		}
+	})
 
-	moveSection := func(dir int) {
-		n := len(allForms)
-		currentFormIndex = (currentFormIndex + dir + n) % n
-		markSection(allForms, currentFormIndex)
-		e.App.SetFocus(allForms[currentFormIndex])
-	}
+	form.AddButton("Text Color", func() { e.showColorPicker(false) })
+	form.AddButton("Background Color", func() { e.showColorPicker(true) })
 
-	container.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+	// Actions
+	form.AddButton("Page Break", func() {
+		e.Doc.InsertPageBreak()
+		e.App.SetRoot(e.Root, true).SetFocus(e.View)
+		e.redraw()
+	})
+	form.AddButton("Close", func() {
+		e.App.SetRoot(e.Root, true).SetFocus(e.View)
+		e.redraw()
+	})
+
+	uitheme.StyleForm(form, "Format Text")
+	form.SetBorder(true)
+
+	modal := centredModal(form, 42, 18)
+
+	form.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() == tcell.KeyEscape {
 			e.App.SetRoot(e.Root, true).SetFocus(e.View)
 			e.redraw()
 			return nil
 		}
-		if event.Modifiers()&tcell.ModAlt != 0 && (event.Rune() == 's' || event.Rune() == 'S') {
-			e.App.SetRoot(e.Root, true).SetFocus(e.View)
-			e.redraw()
-			return nil
-		}
-		if event.Modifiers()&tcell.ModAlt != 0 && event.Modifiers()&tcell.ModShift != 0 {
-			if event.Key() == tcell.KeyLeft {
-				moveSection(-1)
-				return nil
-			}
-			if event.Key() == tcell.KeyRight {
-				moveSection(1)
-				return nil
-			}
-		}
 		return event
 	})
 
-	e.App.SetRoot(container, true).SetFocus(leftForm)
+	e.App.SetRoot(modal, true).SetFocus(form)
 }

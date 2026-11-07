@@ -35,8 +35,9 @@ type Run struct {
 
 // Paragraph is a sequence of runs. Soft-wrapped on screen; hard break = new paragraph.
 type Paragraph struct {
-	Runs  []Run
-	Align Align
+	Runs      []Run
+	Align     Align
+	PageBreak bool
 }
 
 // Document is a multi-paragraph word-processor model with basic styling.
@@ -47,6 +48,7 @@ type Document struct {
 	Dirty    bool
 
 	Paragraphs []Paragraph
+	Page       PageSettings
 
 	CursorPara int
 	CursorOff  int
@@ -79,10 +81,24 @@ func New() *Document {
 	return &Document{
 		Title:        "Untitled",
 		Paragraphs:   []Paragraph{{Runs: []Run{{Text: "", Style: StyleNone}}}},
+		Page:         DefaultA4Portrait(),
 		CursorPara:   0,
 		CursorOff:    0,
-		DisplayWidth: 72,
+		DisplayWidth: 80,
 	}
+}
+
+func (d *Document) SetPageSettings(p PageSettings) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.Page = p
+	d.Dirty = true
+}
+
+func (d *Document) GetPageSettings() PageSettings {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	return d.Page
 }
 
 func (d *Document) SetDisplayWidth(w int) {
