@@ -118,7 +118,7 @@ func (e *Editor) refreshStatus() {
 	col := e.Doc.CursorCol()
 	style := e.Doc.StyleString()
 	e.Status.SetText(fmt.Sprintf(
-		" [teal]Ln %d, Col %d[::-]  [teal]Words:[::-] %d  [teal]Chars:[::-] %d  [teal]¶[::-] %d  [yellow]%s[::-]  [gray]| Alt+F find · Alt+G go-to · Alt+B/I/U style · ? help · Esc quit[::-]",
+		" [teal]Ln %d, Col %d[::-]  [teal]W:%d C:%d ¶%d[::-]  [yellow]%s[::-]  [gray]| Alt+C/Y colour · Alt+L/E/R align · Alt+B/I/U style · ? help[::-]",
 		line, col, words, chars, paras, style))
 }
 
@@ -192,6 +192,24 @@ func (e *Editor) handleKeys(event *tcell.EventKey) *tcell.EventKey {
 			return nil
 		case 'g', 'G':
 			e.showGoToDialog()
+			return nil
+		case 'c', 'C':
+			e.showColorPicker(false) // foreground
+			return nil
+		case 'y', 'Y':
+			e.showColorPicker(true) // background
+			return nil
+		case 'l', 'L':
+			e.Doc.SetParagraphAlign(document.AlignLeft)
+			e.redraw()
+			return nil
+		case 'e', 'E':
+			e.Doc.SetParagraphAlign(document.AlignCenter)
+			e.redraw()
+			return nil
+		case 'r', 'R':
+			e.Doc.SetParagraphAlign(document.AlignRight)
+			e.redraw()
 			return nil
 		case 'b', 'B':
 			e.toggleStyle(document.StyleBold)
@@ -338,12 +356,15 @@ func (e *Editor) showHelp() {
   F3                  Find next
   F4                  Find previous
 
-[yellow]Styling (renders as real bold/italic/underline in the terminal)[::-]
-  Alt+B  or  Ctrl+B   Toggle Bold on current paragraph
-  Alt+I  or  Ctrl+I   Toggle Italic on current paragraph
-  Alt+U  or  Ctrl+U   Toggle Underline on current paragraph
-  Alt+K               Toggle Strikethrough on current paragraph
-  New text is typed with the active style (shown in status bar)
+[yellow]Styling[::-]
+  Alt+B / Ctrl+B      Toggle Bold
+  Alt+I / Ctrl+I      Toggle Italic
+  Alt+U / Ctrl+U      Toggle Underline
+  Alt+K               Toggle Strikethrough
+  Alt+C               Text colour
+  Alt+Y               Background colour
+  Alt+L / E / R       Align left / center / right (current paragraph)
+  New text uses the active style + colours (see status bar)
 
 [yellow]File[::-]
   Alt+N               New document
@@ -409,6 +430,70 @@ func (e *Editor) openDocument() {
 		})
 	uitheme.StyleModal(modal, "Open")
 	e.App.SetRoot(modal, true).SetFocus(modal)
+}
+
+
+// ---------- Colour picker ----------
+
+func (e *Editor) showColorPicker(background bool) {
+	title := "Text colour"
+	if background {
+		title = "Background colour"
+	}
+	list := tview.NewList()
+	uitheme.StyleList(list, title)
+	list.SetBorder(true)
+
+	fg, bg := e.Doc.ActiveColors()
+	current := fg
+	if background {
+		current = bg
+	}
+
+	for _, c := range document.ColorPalette {
+		name := c.Name
+		val := c.Value
+		label := name
+		if val == current {
+			label = name + "  ←"
+		}
+		// Preview colour in secondary text when possible
+		sec := val
+		if val == "" {
+			sec = "(terminal default)"
+		}
+		v := val // capture
+		list.AddItem(label, sec, 0, func() {
+			if background {
+				e.Doc.SetActiveBg(v)
+			} else {
+				e.Doc.SetActiveFg(v)
+			}
+			e.redraw()
+			e.App.SetRoot(e.Root, true).SetFocus(e.View)
+		})
+	}
+	list.AddItem("Close", "Esc", 'q', func() {
+		e.App.SetRoot(e.Root, true).SetFocus(e.View)
+	})
+
+	list.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Key() == tcell.KeyEscape {
+			e.App.SetRoot(e.Root, true).SetFocus(e.View)
+			return nil
+		}
+		return event
+	})
+
+	pages := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(nil, 0, 1, false).
+		AddItem(tview.NewFlex().
+			AddItem(nil, 0, 1, false).
+			AddItem(list, 40, 0, true).
+			AddItem(nil, 0, 1, false), 16, 0, true).
+		AddItem(nil, 0, 1, false)
+
+	e.App.SetRoot(pages, true).SetFocus(list)
 }
 
 // ---------- Go to line ----------

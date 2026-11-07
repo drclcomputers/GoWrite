@@ -23,15 +23,27 @@ const (
 	StyleStrike    Style = 1 << 3
 )
 
-// Run is a contiguous piece of text with the same style.
+// Align is paragraph-level horizontal alignment.
+type Align int
+
+const (
+	AlignLeft Align = iota
+	AlignCenter
+	AlignRight
+)
+
+// Run is a contiguous piece of text with the same style and colours.
 type Run struct {
 	Text  string
 	Style Style
+	Fg    string // "" = default; otherwise tview colour name or #rrggbb
+	Bg    string
 }
 
 // Paragraph is a sequence of runs. Soft-wrapped on screen; hard break = new paragraph.
 type Paragraph struct {
-	Runs []Run
+	Runs  []Run
+	Align Align
 }
 
 // Document is a multi-paragraph word-processor model with basic styling.
@@ -47,22 +59,47 @@ type Document struct {
 	CursorPara int
 	CursorOff  int
 
-	// Active style for newly typed text
+	// Active style / colours for newly typed text
 	ActiveStyle Style
+	ActiveFg    string
+	ActiveBg    string
+
+	// DisplayWidth is used for center/right padding when rendering.
+	DisplayWidth int
 
 	// Last search (for Find Next / Prev)
-	LastSearch     string
-	LastSearchCase bool
+	LastSearch      string
+	LastSearchCase  bool
 	LastSearchWhole bool
+}
+
+// Named palette (shared by UI colour pickers).
+var ColorPalette = []struct {
+	Name  string
+	Value string // tview tag value
+}{
+	{"Default", ""},
+	{"White", "#e8ecf4"},
+	{"Gray", "#8a94a6"},
+	{"Red", "#e06c75"},
+	{"Orange", "#d19a66"},
+	{"Yellow", "#f0d090"},
+	{"Green", "#5ab48c"},
+	{"Cyan", "#56b6c2"},
+	{"Blue", "#61afef"},
+	{"Purple", "#c678dd"},
+	{"Pink", "#e060a0"},
+	{"Black", "#0e111a"},
 }
 
 // New creates an empty document with one blank paragraph.
 func New() *Document {
 	return &Document{
-		Title:      "Untitled",
-		Paragraphs: []Paragraph{{Runs: []Run{{Text: "", Style: StyleNone}}}},
-		CursorPara: 0,
-		CursorOff:  0,
+		Title:        "Untitled",
+		Paragraphs:   []Paragraph{{Runs: []Run{{Text: "", Style: StyleNone}}}},
+		CursorPara:   0,
+		CursorOff:    0,
+		DisplayWidth: 72,
 	}
 }
 
@@ -87,7 +124,6 @@ func (d *Document) Text() string {
 }
 
 // StyledText returns a tview-friendly string with colour/style tags for display.
-// Bold → [::b], Italic → [::i], Underline → [::u], Strike → [::s]
 func (d *Document) StyledText() string {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
@@ -96,11 +132,19 @@ func (d *Document) StyledText() string {
 		if i > 0 {
 			b.WriteByte('\n')
 		}
+		if p.Align != AlignLeft {
+			plain := plainOf(p)
+			padded := padAligned(plain, p.Align, d.DisplayWidth)
+			lead := len([]rune(padded)) - len([]rune(plain))
+			if lead > 0 {
+				b.WriteString(strings.Repeat(" ", lead))
+			}
+		}
 		for _, r := range p.Runs {
 			if r.Text == "" {
 				continue
 			}
-			open, close := styleTags(r.Style)
+			open, close := styleTags(r.Style, r.Fg, r.Bg)
 			b.WriteString(open)
 			b.WriteString(decorateRunText(r.Text, r.Style))
 			b.WriteString(close)
@@ -137,12 +181,20 @@ func (d *Document) StyledTextWithCursor() string {
 		if pi > 0 {
 			b.WriteByte('\n')
 		}
+		if p.Align != AlignLeft {
+			plain := plainOf(p)
+			padded := padAligned(plain, p.Align, d.DisplayWidth)
+			lead := len([]rune(padded)) - len([]rune(plain))
+			if lead > 0 {
+				b.WriteString(strings.Repeat(" ", lead))
+			}
+		}
 		cursorHere := pi == d.CursorPara
 		pos := 0
 		cursorDrawn := false
 		for _, r := range p.Runs {
 			runes := []rune(r.Text)
-			open, close := styleTags(r.Style)
+			open, close := styleTags(r.Style, r.Fg, r.Bg)
 			if !cursorHere {
 				if r.Text != "" {
 					b.WriteString(open)
@@ -160,13 +212,8 @@ func (d *Document) StyledTextWithCursor() string {
 					b.WriteString(decorateRunText(string(runes[:i]), r.Style))
 					b.WriteString(close)
 					b.WriteString(caretOpen)
-					// caret cell: still show underline decoration on the underlying char
-					if r.Style&StyleUnderline != 0 {
-						b.WriteRune(ch)
-						b.WriteRune('\u0332')
-					} else {
-						b.WriteRune(ch)
-					}
+					// caret cell uses same decoration rules as the run
+					b.WriteString(decorateRunText(string(ch), r.Style))
 					b.WriteString(caretClose)
 					if i+1 < len(runes) {
 						b.WriteString(open)
@@ -204,17 +251,9 @@ func (d *Document) StyledTextWithCursor() string {
 	return b.String()
 }
 
-func styleTags(s Style) (open, close string) {
-	// Underline is NOT emitted as the terminal "u" attribute — SGR underline
-	// is sticky on many terminals and keeps painting after it is turned off.
-	// Underlined runs are decorated with a combining low-line instead
-	// (see decorateRunText). Bold/italic/strike still use real attributes.
+func styleTags(s Style, fg, bg string) (open, close string) {
+	// Underline uses combining chars (decorateRunText) — SGR underline is sticky.
 	const reset = "[-:-:-]"
-	// Strip underline from the attribute mask used for tview tags.
-	s = s &^ StyleUnderline
-	if s == StyleNone {
-		return reset, ""
-	}
 	attrs := ""
 	if s&StyleBold != 0 {
 		attrs += "b"
@@ -225,14 +264,27 @@ func styleTags(s Style) (open, close string) {
 	if s&StyleStrike != 0 {
 		attrs += "s"
 	}
-	if attrs == "" {
+	// Colours
+	f := fg
+	b := bg
+	if f == "" {
+		f = "-"
+	}
+	if b == "" {
+		b = "-"
+	}
+	hasColour := fg != "" || bg != ""
+	hasAttr := attrs != ""
+	if !hasColour && !hasAttr {
 		return reset, ""
 	}
-	return reset + "[::" + attrs + "]", reset
+	if hasAttr {
+		return reset + "[" + f + ":" + b + ":" + attrs + "]", reset
+	}
+	return reset + "[" + f + ":" + b + "]", reset
 }
 
-// decorateRunText applies display-only decorations that are not terminal attrs.
-// Underline → U+0332 COMBINING LOW LINE after each visible character.
+// decorateRunText applies display-only underline via combining low-line.
 func decorateRunText(text string, style Style) string {
 	if style&StyleUnderline == 0 || text == "" {
 		return text
@@ -248,6 +300,27 @@ func decorateRunText(text string, style Style) string {
 	return b.String()
 }
 
+// padAligned returns text padded for left/center/right within width.
+func padAligned(text string, align Align, width int) string {
+	if width <= 0 || align == AlignLeft {
+		return text
+	}
+	// Only pad the first visual line (simple paragraph-level alignment).
+	n := len([]rune(text))
+	if n >= width {
+		return text
+	}
+	pad := width - n
+	switch align {
+	case AlignCenter:
+		left := pad / 2
+		return strings.Repeat(" ", left) + text
+	case AlignRight:
+		return strings.Repeat(" ", pad) + text
+	default:
+		return text
+	}
+}
 
 // SetText replaces the entire content with plain text (no styles).
 func (d *Document) SetText(s string) {
@@ -315,42 +388,42 @@ func (d *Document) InsertRune(r rune) {
 		return
 	}
 
-	// Insert into runs at cursor
-	d.insertIntoRuns(string(r), d.ActiveStyle)
+	// Insert into runs at cursor using active style + colours
+	d.insertIntoRuns(string(r), d.ActiveStyle, d.ActiveFg, d.ActiveBg)
 	d.CursorOff++
 	d.Dirty = true
 }
 
-// insertIntoRuns inserts text with the given style at the current cursor offset.
+// sameRunStyle reports whether a run matches style+colours (merge candidate).
+func sameRunStyle(r Run, style Style, fg, bg string) bool {
+	return r.Style == style && r.Fg == fg && r.Bg == bg
+}
+
+// insertIntoRuns inserts text with the given style and colours at the cursor.
 // Caller holds lock and has called ensureCursor.
-func (d *Document) insertIntoRuns(text string, style Style) {
+func (d *Document) insertIntoRuns(text string, style Style, fg, bg string) {
 	p := &d.Paragraphs[d.CursorPara]
 	off := d.CursorOff
-	// Walk runs to find insertion point
 	pos := 0
 	for i := range p.Runs {
 		runLen := len([]rune(p.Runs[i].Text))
 		if pos+runLen >= off {
-			// Insert inside this run
 			local := off - pos
 			runes := []rune(p.Runs[i].Text)
-			if p.Runs[i].Style == style {
-				// Same style – just splice text
-				newText := string(runes[:local]) + text + string(runes[local:])
-				p.Runs[i].Text = newText
+			if sameRunStyle(p.Runs[i], style, fg, bg) {
+				p.Runs[i].Text = string(runes[:local]) + text + string(runes[local:])
 				return
 			}
-			// Different style – split the run
 			left := string(runes[:local])
 			right := string(runes[local:])
 			newRuns := make([]Run, 0, len(p.Runs)+2)
 			newRuns = append(newRuns, p.Runs[:i]...)
 			if left != "" {
-				newRuns = append(newRuns, Run{Text: left, Style: p.Runs[i].Style})
+				newRuns = append(newRuns, Run{Text: left, Style: p.Runs[i].Style, Fg: p.Runs[i].Fg, Bg: p.Runs[i].Bg})
 			}
-			newRuns = append(newRuns, Run{Text: text, Style: style})
+			newRuns = append(newRuns, Run{Text: text, Style: style, Fg: fg, Bg: bg})
 			if right != "" {
-				newRuns = append(newRuns, Run{Text: right, Style: p.Runs[i].Style})
+				newRuns = append(newRuns, Run{Text: right, Style: p.Runs[i].Style, Fg: p.Runs[i].Fg, Bg: p.Runs[i].Bg})
 			}
 			newRuns = append(newRuns, p.Runs[i+1:]...)
 			p.Runs = newRuns
@@ -359,10 +432,10 @@ func (d *Document) insertIntoRuns(text string, style Style) {
 		pos += runLen
 	}
 	// Past the end – append
-	if len(p.Runs) > 0 && p.Runs[len(p.Runs)-1].Style == style {
+	if len(p.Runs) > 0 && sameRunStyle(p.Runs[len(p.Runs)-1], style, fg, bg) {
 		p.Runs[len(p.Runs)-1].Text += text
 	} else {
-		p.Runs = append(p.Runs, Run{Text: text, Style: style})
+		p.Runs = append(p.Runs, Run{Text: text, Style: style, Fg: fg, Bg: bg})
 	}
 }
 
@@ -378,25 +451,26 @@ func (d *Document) splitParaAtCursor() (left, right Paragraph) {
 			local := off - pos
 			leftRuns := append([]Run{}, p.Runs[:i]...)
 			if local > 0 {
-				leftRuns = append(leftRuns, Run{Text: string(runes[:local]), Style: run.Style})
+				leftRuns = append(leftRuns, Run{Text: string(runes[:local]), Style: run.Style, Fg: run.Fg, Bg: run.Bg})
 			}
 			if len(leftRuns) == 0 {
 				leftRuns = []Run{{Text: "", Style: StyleNone}}
 			}
 			rightRuns := []Run{}
 			if local < runLen {
-				rightRuns = append(rightRuns, Run{Text: string(runes[local:]), Style: run.Style})
+				rightRuns = append(rightRuns, Run{Text: string(runes[local:]), Style: run.Style, Fg: run.Fg, Bg: run.Bg})
 			}
 			rightRuns = append(rightRuns, p.Runs[i+1:]...)
 			if len(rightRuns) == 0 {
 				rightRuns = []Run{{Text: "", Style: StyleNone}}
 			}
-			return Paragraph{Runs: leftRuns}, Paragraph{Runs: rightRuns}
+			// Both sides inherit paragraph alignment
+			return Paragraph{Runs: leftRuns, Align: p.Align}, Paragraph{Runs: rightRuns, Align: p.Align}
 		}
 		pos += runLen
 	}
 	// Cursor at end
-	return p, Paragraph{Runs: []Run{{Text: "", Style: StyleNone}}}
+	return p, Paragraph{Runs: []Run{{Text: "", Style: StyleNone}}, Align: p.Align}
 }
 
 // Backspace deletes the character before the cursor (or merges paragraphs).
@@ -841,15 +915,77 @@ func (d *Document) CursorCol() int {
 	return d.CursorOff + 1
 }
 
+// SetActiveFg sets the foreground colour for newly typed text.
+func (d *Document) SetActiveFg(fg string) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.ActiveFg = fg
+}
+
+// SetActiveBg sets the background colour for newly typed text.
+func (d *Document) SetActiveBg(bg string) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.ActiveBg = bg
+}
+
+// ActiveColors returns the active fg/bg colour values.
+func (d *Document) ActiveColors() (fg, bg string) {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	return d.ActiveFg, d.ActiveBg
+}
+
+// SetParagraphAlign sets alignment for the paragraph under the cursor.
+func (d *Document) SetParagraphAlign(a Align) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.ensureCursor()
+	d.Paragraphs[d.CursorPara].Align = a
+	d.Dirty = true
+}
+
+// CurrentAlign returns the alignment of the paragraph under the cursor.
+func (d *Document) CurrentAlign() Align {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	if d.CursorPara < 0 || d.CursorPara >= len(d.Paragraphs) {
+		return AlignLeft
+	}
+	return d.Paragraphs[d.CursorPara].Align
+}
+
+// ColorName returns a palette name for a colour value (or the value itself).
+func ColorName(val string) string {
+	if val == "" {
+		return "Default"
+	}
+	for _, c := range ColorPalette {
+		if c.Value == val {
+			return c.Name
+		}
+	}
+	return val
+}
+
+// AlignString returns a short label for an alignment.
+func AlignString(a Align) string {
+	switch a {
+	case AlignCenter:
+		return "Center"
+	case AlignRight:
+		return "Right"
+	default:
+		return "Left"
+	}
+}
+
 // StyleString returns a short status label for the active style.
 func (d *Document) StyleString() string {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
-	s := d.ActiveStyle
-	if s == StyleNone {
-		return "Normal"
-	}
 	var parts []string
+	s := d.ActiveStyle
 	if s&StyleBold != 0 {
 		parts = append(parts, "Bold")
 	}
@@ -861,6 +997,21 @@ func (d *Document) StyleString() string {
 	}
 	if s&StyleStrike != 0 {
 		parts = append(parts, "Strike")
+	}
+	if d.ActiveFg != "" {
+		parts = append(parts, "fg:"+ColorName(d.ActiveFg))
+	}
+	if d.ActiveBg != "" {
+		parts = append(parts, "bg:"+ColorName(d.ActiveBg))
+	}
+	parts = append(parts, AlignString(func() Align {
+		if d.CursorPara >= 0 && d.CursorPara < len(d.Paragraphs) {
+			return d.Paragraphs[d.CursorPara].Align
+		}
+		return AlignLeft
+	}()))
+	if len(parts) == 1 {
+		return "Normal · " + parts[0]
 	}
 	return strings.Join(parts, "+")
 }
