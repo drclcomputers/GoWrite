@@ -226,7 +226,7 @@ func (e *Editor) showFormatDialog() {
 
 	// ── Layout ──────────────────────────────────────────────────────────────
 	leftCol := tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(styleForm, 0, 1, true).
+		AddItem(styleForm, 0, 2, true).
 		AddItem(colorBox, 0, 1, false)
 
 	midCol := tview.NewFlex().SetDirection(tview.FlexRow).

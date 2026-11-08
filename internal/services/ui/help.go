@@ -12,41 +12,41 @@ import (
 
 func (e *Editor) showHelp() {
 	helpText := `[#f0d090::b]EVERY DAY[-]
-  Arrows          Move cursor
-  Shift+Arrows    Select text
-  Type            Insert text
-  Alt+Enter       Format (style, lists, view, insert, page setup)
-  Alt+P           Page setup (size, margins)
-  Alt+D           Header, footer, page numbers
-  Alt+S           Save
-  Alt+F           Find
-  ?               This help
-  Esc             Quit (or clear selection)
+  Arrows           Move cursor
+  Shift + Arrows   Select text
+  Type             Insert text
+  Alt + Enter      Format (style, lists, view, insert, page setup)
+  Alt + P          Page setup (size, margins)
+  Alt + D          Header, footer, page numbers
+  Alt + S          Save
+  Alt + F          Find
+  ?                This help
+  Esc              Quit (or clear selection)
 
 [#7dcea0::b]STYLING[-]
-  Alt+B           Toggle Bold
-  Alt+I           Toggle Italic
-  Alt+U           Toggle Underline
-  Alt+K           Toggle Strikethrough
-  Alt+A           Apply active style to selection
-  Alt+C           Text color
-  Alt+Y           Background color
-  Alt+L / E / R   Align left / center / right
-  Alt+Shift+P     Insert page break
+  Alt + B          Toggle Bold
+  Alt + I          Toggle Italic
+  Alt + U          Toggle Underline
+  Alt + K          Toggle Strikethrough
+  Alt + A          Apply active style to selection
+  Alt + C          Text color
+  Alt + Y          Background color
+  Alt + L / E / R  Align left / center / right
+  Alt + Shift + P  Insert page break
 
 [#8ecae6::b]FORMAT SCREEN  (Alt+Enter)[-]
   Style / Transform / Colors
-  Paragraph      Title, headings, quote, code; alignment; space after (rows)
-  Lists           numbered, lettered, bullets, checkboxes, roman
-                  (lists auto-continue on Enter; empty item exits)
-  View            Formatting marks and heading outline
-  Insert          Date & Time · Symbols · Table · Page break
-  Page Setup      Page size, margins, header, footer, page numbers
+  Paragraph        Title, headings, quote, code; alignment; space after (rows)
+  Lists            numbered, lettered, bullets, checkboxes, roman
+                   (lists auto-continue on Enter; empty item exits)
+  View             Formatting marks and heading outline
+  Insert           Date & Time · Symbols · Table · Page break
+  Page Setup       Page size, margins, header, footer, page numbers
 
 [#8ecae6::b]LESS OFTEN[-]  (Alt + the letter)
   O open          N new            G go to line       H replace
-  Shift+C copy    Shift+X cut      Shift+V paste      Shift+A select all
-  Z undo          Shift+Z redo
+  Shift + C copy  Shift + X cut    Shift + V paste    Shift + A select all
+  Z undo          Shift + Z redo
   F3 / F4         Find next / previous
 
 [#8aa0b8]Alt+Shift+←/→ selects whole words. Plain Alt+arrow is swallowed by the terminal.[-]
@@ -61,7 +61,7 @@ Everything else is Alt, or a plain key.[-]
 		SetWrap(true)
 
 	textView.SetBorder(true).
-		SetTitle(" GoWrite  ·  ? or Esc closes ").
+		SetTitle(" GoWrite  ·  Esc to close ").
 		SetTitleAlign(tview.AlignCenter).
 		SetTitleColor(tcell.NewRGBColor(240, 208, 144)).
 		SetBorderColor(tcell.NewRGBColor(70, 160, 170)).
