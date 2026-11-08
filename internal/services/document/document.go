@@ -99,6 +99,7 @@ func New() *Document {
 func (d *Document) SetPageSettings(p PageSettings) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	p = p.Normalized()
 	if p == d.Page {
 		return
 	}

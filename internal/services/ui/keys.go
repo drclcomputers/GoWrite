@@ -65,6 +65,9 @@ func (e *Editor) handleKeys(event *tcell.EventKey) *tcell.EventKey {
 			}
 			e.showColorPicker(false)
 			return nil
+		case 'd', 'D':
+			e.showHeaderFooter()
+			return nil
 		case 'e', 'E':
 			e.Doc.SetParagraphAlign(document.AlignCenter)
 			e.redraw()

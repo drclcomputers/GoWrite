@@ -154,11 +154,7 @@ func alignPad(a Align, wrapWidth, contentWidth int) int {
 }
 
 func (d *Document) wrapWidth() int {
-	w := d.Page.Width
-	if w < 1 {
-		w = 1
-	}
-	return w
+	return d.geometry().bodyW
 }
 
 func displayText(s string, style Style) string {
@@ -221,7 +217,7 @@ func writeRange(b *strings.Builder, p Paragraph, from, to, caret, selFrom, selTo
 	}
 }
 
-// render builds the tview-tagged text, chunking it into pages.
+// render builds the tview-tagged text, page by page.
 func (d *Document) render(withCaret bool) (string, int) {
 	if len(d.Paragraphs) == 0 {
 		if withCaret {
@@ -230,22 +226,22 @@ func (d *Document) render(withCaret bool) (string, int) {
 		return "", 0
 	}
 
-	ps := d.Page
-	if ps.Width == 0 {
-		ps = DefaultA4Portrait()
-	}
+	g := d.geometry()
+	ps := g.ps
+	pages := d.walk(g, pageWalker{})
 
 	var b strings.Builder
-	// Calculate left margin to center the page on screen
+	// Left margin to center the page on screen
 	margin := (d.DisplayWidth - ps.Width - 2) / 2
 	if margin < 0 {
 		margin = 0
 	}
+	ml := strings.Repeat(" ", ps.MarginLeft)
+	mr := strings.Repeat(" ", ps.MarginRight)
 
 	writeMargin := func() {
 		b.WriteString(strings.Repeat(" ", margin))
 	}
-
 	drawPageTop := func() {
 		writeMargin()
 		b.WriteString("┌" + strings.Repeat("─", ps.Width) + "┐\n")
@@ -254,56 +250,78 @@ func (d *Document) render(withCaret bool) (string, int) {
 		writeMargin()
 		b.WriteString("└" + strings.Repeat("─", ps.Width) + "┘\n")
 	}
-
-	row, cursorRow := 0, 0
-	pageRows := 0
-
-	drawPageTop()
-	row++
+	blankRow := func() {
+		writeMargin()
+		b.WriteString("│" + strings.Repeat(" ", ps.Width) + "│\n")
+	}
+	textRow := func(plain string) {
+		writeMargin()
+		b.WriteString("│" + ml + tview.Escape(plain) + mr + "│\n")
+	}
 
 	sp, so, ep, eo, selOK := d.selectionRange()
 
-	for pi, p := range d.Paragraphs {
-		if p.PageBreak && pageRows > 0 {
-			drawPageBottom()
-			b.WriteString("\n")
+	var (
+		p              Paragraph
+		rs             []rune
+		lines          []visualLine
+		cur, curLine   int
+		selFrom, selTo int
+		breakSel       bool
+		cursorRow      int
+	)
+
+	d.walk(g, pageWalker{
+		startPage: func(page int) {
 			drawPageTop()
-			row += 2
-			pageRows = 0
-		}
-
-		rs := []rune(plainOf(p))
-		lines := wrapRunes(rs, ps.Width)
-
-		cur, curLine := -1, -1
-		if pi == d.CursorPara {
-			cur = min(max(d.CursorOff, 0), len(rs))
-			curLine = lineIndexFor(lines, cur)
-		}
-
-		selFrom, selTo, breakSel := -1, -1, false
-		if selOK && pi >= sp && pi <= ep {
-			from, to := 0, len(rs)
-			if pi == sp {
-				from = so
+			if g.hdr {
+				textRow(d.runningLine(ps.Header, ps.PageNumbers, ps.PageNumbers.Where == NumHeader, page, pages, g.bodyW))
 			}
-			if pi == ep {
-				to = eo
+			for range ps.MarginTop {
+				blankRow()
 			}
-			if from < to {
-				selFrom, selTo = from, to
+		},
+		endPage: func(page, used int, more bool) {
+			for i := used; i < g.bodyH; i++ {
+				blankRow()
 			}
-			breakSel = pi < ep
-		}
-
-		for li, ln := range lines {
-			if pageRows >= ps.Height {
-				drawPageBottom()
+			for range ps.MarginBottom {
+				blankRow()
+			}
+			if g.ftr {
+				textRow(d.runningLine(ps.Footer, ps.PageNumbers, ps.PageNumbers.Where == NumFooter, page, pages, g.bodyW))
+			}
+			drawPageBottom()
+			if more {
 				b.WriteString("\n")
-				drawPageTop()
-				row += 2
-				pageRows = 0
 			}
+		},
+		para: func(pi int, r []rune, l []visualLine) {
+			p, rs, lines = d.Paragraphs[pi], r, l
+
+			cur, curLine = -1, -1
+			if pi == d.CursorPara {
+				cur = min(max(d.CursorOff, 0), len(rs))
+				curLine = lineIndexFor(lines, cur)
+			}
+
+			selFrom, selTo, breakSel = -1, -1, false
+			if selOK && pi >= sp && pi <= ep {
+				from, to := 0, len(rs)
+				if pi == sp {
+					from = so
+				}
+				if pi == ep {
+					to = eo
+				}
+				if from < to {
+					selFrom, selTo = from, to
+				}
+				breakSel = pi < ep
+			}
+		},
+		line: func(li, _, row int) {
+			ln := lines[li]
 
 			var lineBuf strings.Builder
 			caret := -1
@@ -317,13 +335,13 @@ func (d *Document) render(withCaret bool) (string, int) {
 			}
 
 			cw := widthOf(rs[ln.Start:ln.CEnd])
-			pad := alignPad(p.Align, ps.Width, cw)
+			pad := alignPad(p.Align, g.bodyW, cw)
 			if pad > 0 {
 				lineBuf.WriteString(strings.Repeat(" ", pad))
 			}
 
 			vEnd := ln.CEnd
-			room := ps.Width - pad - cw
+			room := g.bodyW - pad - cw
 			for vEnd < ln.End {
 				w := cellWidth(rs[vEnd])
 				if w > room {
@@ -344,18 +362,16 @@ func (d *Document) render(withCaret bool) (string, int) {
 				if glyph {
 					used++
 				}
-				if used+1 <= ps.Width {
+				if used+1 <= g.bodyW {
 					open, cl := styleTags(StyleNone, selFg, selBg)
 					lineBuf.WriteString(open + " " + cl)
 				}
 			}
 
-			// Draw the actual line of text inside the page border
 			writeMargin()
-			b.WriteString("│")
+			b.WriteString("│" + ml)
 			b.WriteString(lineBuf.String())
 
-			// Pad the rest of the page width
 			lineWidth := pad + widthOf(rs[ln.Start:vEnd])
 			if glyph {
 				lineWidth++
@@ -363,26 +379,13 @@ func (d *Document) render(withCaret bool) (string, int) {
 			if breakSel && li == len(lines)-1 {
 				lineWidth++
 			}
-			// Tags are zero-width, so wrapping to ps.Width cannot overflow.
-			if lineWidth < ps.Width {
-				b.WriteString(strings.Repeat(" ", ps.Width-lineWidth))
+			// Tags are zero-width, so wrapping to bodyW cannot overflow.
+			if lineWidth < g.bodyW {
+				b.WriteString(strings.Repeat(" ", g.bodyW-lineWidth))
 			}
-			b.WriteString("│\n")
-
-			row++
-			pageRows++
-		}
-	}
-
-	// Fill remaining page rows with blank lines
-	for pageRows < ps.Height {
-		writeMargin()
-		b.WriteString("│" + strings.Repeat(" ", ps.Width) + "│\n")
-		row++
-		pageRows++
-	}
-
-	drawPageBottom()
+			b.WriteString(mr + "│\n")
+		},
+	})
 
 	return b.String(), cursorRow
 }
@@ -405,42 +408,24 @@ func (d *Document) StyledTextWithCursor() string {
 func (d *Document) CursorRow() int {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
-	ps := d.Page
-	if ps.Width == 0 {
-		ps = DefaultA4Portrait()
-	}
-
-	row := 1 // Top border
-	pageRows := 0
-
-	for pi, p := range d.Paragraphs {
-		if p.PageBreak && pageRows > 0 {
-			row += 2 // Bottom border + gap + top border
-			pageRows = 0
-		}
-
-		rs := []rune(plainOf(p))
-		lines := wrapRunes(rs, ps.Width)
-
-		for li := range lines {
-			if pageRows >= ps.Height {
-				row += 2
-				pageRows = 0
+	var (
+		pi, res int
+		found   bool
+		rs      []rune
+		lines   []visualLine
+	)
+	d.walk(d.geometry(), pageWalker{
+		para: func(i int, r []rune, l []visualLine) { pi, rs, lines = i, r, l },
+		line: func(li, _, row int) {
+			if found {
+				return
 			}
-
-			if pi == d.CursorPara {
-				off := min(max(d.CursorOff, 0), len(rs))
-				if li == lineIndexFor(lines, off) {
-					return row
-				}
-			}
-			row++
-			pageRows++
-		}
-	}
-	return row
+			res = row
+			found = pi == d.CursorPara && li == lineIndexFor(lines, min(max(d.CursorOff, 0), len(rs)))
+		},
+	})
+	return res
 }
-
 
 // Navigation on visual lines
 

@@ -16,7 +16,8 @@ func (e *Editor) showHelp() {
   Shift+Arrows    Select text
   Type            Insert text
   Alt+Enter       Format text
-  Alt+P           Page setup
+  Alt+P           Page setup (size, margins)
+  Alt+D           Header, footer, page numbers
   Alt+S           Save
   Alt+F           Find
   ?               This help

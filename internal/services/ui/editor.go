@@ -130,13 +130,14 @@ func (e *Editor) refreshUI() {
 	words := e.Doc.WordCount()
 	chars := e.Doc.CharCount()
 	style := e.Doc.StyleString()
+	page, pages := e.Doc.PageInfo()
 
 	e.TopBar.SetText(fmt.Sprintf(
-		" [#5ec8c8]Ln[::-] [#f0d090]%d[::-]  [#5ec8c8]Col[::-] [#f0d090]%d[::-]   [white]|[::-]   [#5ec8c8]Words:[::-] [#f0d090]%d[::-]  [#5ec8c8]Chars:[::-] [#f0d090]%d[::-]   [white]|[::-]   [#5ec8c8]Style[::-] [#ffffff]-[::-] [#f0d090]%s[::-]",
-		line, col, words, chars, style,
+		" [#5ec8c8]Ln[::-] [#f0d090]%d[::-]  [#5ec8c8]Col[::-] [#f0d090]%d[::-]  [#5ec8c8]Page[::-] [#f0d090]%d/%d[::-]   [white]|[::-]   [#5ec8c8]Words:[::-] [#f0d090]%d[::-]  [#5ec8c8]Chars:[::-] [#f0d090]%d[::-]   [white]|[::-]   [#5ec8c8]Style[::-] [#ffffff]-[::-] [#f0d090]%s[::-]",
+		line, col, page, pages, words, chars, style,
 	))
 
-	e.Status.SetText(" [#5ec8c8]Document[::-]    [#f0d090]Alt+Enter[::-] format    [#f0d090]Alt+P[::-] page setup    [#f0d090]Alt+S[::-] save    [#f0d090]Alt+F[::-] find    [#f0d090]?[::-] help")
+	e.Status.SetText(" [#7dcea0]Document[::-]    [#f0d090]Alt+Enter[::-] [white]format[::-]    [#f0d090]Alt+P[::-] [white]page setup[::-]    [#f0d090]Alt+S[::-] [white]save[::-]    [#f0d090]Alt+F[::-] [white]find[::-]    [#f0d090]?[::-] [white]help[::-]")
 }
 
 func (e *Editor) Mount() {

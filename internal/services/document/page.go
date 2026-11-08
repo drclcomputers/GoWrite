@@ -28,22 +28,105 @@ const (
 	Landscape Orientation = "Landscape"
 )
 
-// PageSettings holds the dimensions of the on-screen paper.
+// HeaderFooter is the text of a running header or footer. It may use the
+// tokens {page}, {pages} and {title}.
+type HeaderFooter struct {
+	Left, Center, Right string
+}
+
+func (h HeaderFooter) empty() bool {
+	return h.Left == "" && h.Center == "" && h.Right == ""
+}
+
+// NumberWhere says where page numbers go.
+type NumberWhere string
+
+const (
+	NumOff    NumberWhere = "Off"
+	NumHeader NumberWhere = "Header"
+	NumFooter NumberWhere = "Footer"
+)
+
+// NumberFormat is how a page number reads.
+type NumberFormat string
+
+const (
+	FormatPlain  NumberFormat = "1"
+	FormatPage   NumberFormat = "Page 1"
+	FormatOf     NumberFormat = "1 of N"
+	FormatPageOf NumberFormat = "Page 1 of N"
+)
+
+// PageNumbers places an automatic page number in the header or footer.
+type PageNumbers struct {
+	Where  NumberWhere
+	Align  Align
+	Format NumberFormat
+}
+
+const (
+	minBodyWidth = 10
+	minBodyRows  = 3
+)
+
+// PageSettings holds the on-screen paper: size, margins, header and footer.
+// Margins are in terminal cells (columns left/right, rows top/bottom).
 type PageSettings struct {
 	Size        PageSize
 	Orientation Orientation
 	Width       int
 	Height      int
+
+	MarginLeft, MarginRight, MarginTop, MarginBottom int
+
+	Header      HeaderFooter
+	Footer      HeaderFooter
+	PageNumbers PageNumbers
+}
+
+func (p PageSettings) hasHeader() bool {
+	return !p.Header.empty() || p.PageNumbers.Where == NumHeader
+}
+
+func (p PageSettings) hasFooter() bool {
+	return !p.Footer.empty() || p.PageNumbers.Where == NumFooter
+}
+
+// Normalized clamps the margins so the text area keeps a usable size.
+func (p PageSettings) Normalized() PageSettings {
+	p.MarginLeft, p.MarginRight = max(p.MarginLeft, 0), max(p.MarginRight, 0)
+	p.MarginTop, p.MarginBottom = max(p.MarginTop, 0), max(p.MarginBottom, 0)
+
+	if sum, room := p.MarginLeft+p.MarginRight, max(p.Width-minBodyWidth, 0); sum > room {
+		p.MarginLeft, p.MarginRight = p.MarginLeft*room/sum, p.MarginRight*room/sum
+	}
+
+	chrome := 0
+	if p.hasHeader() {
+		chrome++
+	}
+	if p.hasFooter() {
+		chrome++
+	}
+	if sum, room := p.MarginTop+p.MarginBottom, max(p.Height-chrome-minBodyRows, 0); sum > room {
+		p.MarginTop, p.MarginBottom = p.MarginTop*room/sum, p.MarginBottom*room/sum
+	}
+	return p
 }
 
 // DefaultA4Portrait returns the default settings.
 func DefaultA4Portrait() PageSettings {
 	w, h := GetDimensions(SizeA4, Portrait)
 	return PageSettings{
-		Size:        SizeA4,
-		Orientation: Portrait,
-		Width:       w,
-		Height:      h,
+		Size:         SizeA4,
+		Orientation:  Portrait,
+		Width:        w,
+		Height:       h,
+		MarginLeft:   6,
+		MarginRight:  6,
+		MarginTop:    2,
+		MarginBottom: 2,
+		PageNumbers:  PageNumbers{Where: NumOff, Align: AlignCenter, Format: FormatPage},
 	}
 }
 

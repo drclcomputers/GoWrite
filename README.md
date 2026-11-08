@@ -25,6 +25,8 @@ GoWrite is a lightweight, terminal-native word processor.
 - Full-screen editor with **word wrap** and **flowing paragraphs**
 - Live status bar (line/col · words · chars · paragraphs · active style)
 - Dirty-document tracking
+- **Page setup**: paper size, orientation and margins
+- **Header & footer** with `{page}`, `{pages}`, `{title}` tokens and automatic page numbers
 - **Basic styling**: Bold / Italic / Underline / Strikethrough (toggle + apply to paragraph)
 - **Find / Find & Replace** with case-sensitive and whole-word options
 - **Go to line** (paragraph)
@@ -92,6 +94,8 @@ Open a file directly:
 | **Alt+N**                      | New document                                                    |
 | **Alt+O**                      | Open document                                                   |
 | **Alt+S** / **Ctrl+S**         | Save document                                                   |
+| **Alt+P**                      | Page setup (size, orientation, margins)                         |
+| **Alt+D**                      | Header, footer and page numbers                                 |
 | **?** / **Alt+/**              | Help                                                            |
 | **Esc**                        | Quit (asks if dirty)                                            |
 
