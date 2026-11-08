@@ -50,6 +50,37 @@ func (e *Editor) showGoToDialog() {
 	e.App.SetRoot(centredModal(form, 44, 7), true).SetFocus(form)
 }
 
+func (e *Editor) showOutlineDialog() {
+	list := tview.NewList().
+		ShowSecondaryText(true).
+		SetHighlightFullLine(true)
+
+	entries := e.Doc.Outline()
+	if len(entries) == 0 {
+		list.AddItem("No headings yet", "Apply Heading 1–3 to paragraphs", 0, nil)
+	}
+	for _, entry := range entries {
+		entry := entry
+		label := strings.Repeat("  ", entry.Level-1) + entry.Text
+		secondary := fmt.Sprintf("Heading %d · line %d", entry.Level, entry.Paragraph+1)
+		list.AddItem(label, secondary, 0, func() {
+			e.Doc.GoToLine(entry.Paragraph + 1)
+			e.closeFormatAndRedraw()
+		})
+	}
+	list.AddItem("Back", "Return to Format Text", 'q', func() { e.showFormatDialog() })
+	uitheme.StyleList(list, "Document Outline")
+	list.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Key() == tcell.KeyEscape {
+			e.showFormatDialog()
+			return nil
+		}
+		return event
+	})
+
+	e.App.SetRoot(centredModal(list, 60, 18), true).SetFocus(list)
+}
+
 func (e *Editor) showFindDialog(withReplace bool) {
 	form := tview.NewForm()
 	title := "Find"

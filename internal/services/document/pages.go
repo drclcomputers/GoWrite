@@ -47,6 +47,7 @@ type pageWalker struct {
 	para      func(pi int, rs []rune, lines []visualLine)
 	startPage func(page int)
 	line      func(li, page, row int)
+	space     func(page, row int)
 	endPage   func(page, used int, more bool)
 }
 
@@ -72,6 +73,17 @@ func (d *Document) walk(g pageGeo, w pageWalker) int {
 			row++
 		}
 	}
+	addSpace := func() {
+		if used >= g.bodyH {
+			end(true)
+			begin()
+		}
+		if w.space != nil {
+			w.space(page, row)
+		}
+		row++
+		used++
+	}
 
 	begin()
 	for pi, p := range d.Paragraphs {
@@ -94,6 +106,11 @@ func (d *Document) walk(g pageGeo, w pageWalker) int {
 			}
 			row++
 			used++
+		}
+		if pi+1 < len(d.Paragraphs) && !d.Paragraphs[pi+1].PageBreak {
+			for range min(max(p.SpaceAfter, 0), maxParagraphSpaceAfter) {
+				addSpace()
+			}
 		}
 	}
 	end(false)

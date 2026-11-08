@@ -13,6 +13,14 @@ import (
 )
 
 func (e *Editor) showHeaderFooter() {
+	e.showHeaderFooterWithClose(e.closeDialog)
+}
+
+func (e *Editor) showHeaderFooterFromFormat() {
+	e.showHeaderFooterWithClose(e.showFormatDialog)
+}
+
+func (e *Editor) showHeaderFooterWithClose(close func()) {
 	ps := e.Doc.GetPageSettings()
 	form := tview.NewForm()
 	form.SetItemPadding(0)
@@ -42,7 +50,7 @@ func (e *Editor) showHeaderFooter() {
 	form.AddDropDown("Number align", aligns, int(ps.PageNumbers.Align), func(_ string, i int) {
 		ps.PageNumbers.Align = document.Align(i)
 	})
-	formats := []string{"1", "Page 1", "1 of N", "Page 1 of N"}
+	formats := []string{"1", "Page 1", "1/N", "1 of N", "Page 1 of N"}
 	form.AddDropDown("Number format", formats, indexOf(formats, string(ps.PageNumbers.Format)), func(option string, _ int) {
 		ps.PageNumbers.Format = document.NumberFormat(option)
 	})
@@ -51,16 +59,16 @@ func (e *Editor) showHeaderFooter() {
 		e.Doc.SetPageSettings(ps)
 		shrunk := e.Doc.GetPageSettings().MarginTop != ps.MarginTop ||
 			e.Doc.GetPageSettings().MarginBottom != ps.MarginBottom
-		e.closeDialog()
+		close()
 		if shrunk {
 			e.flashStatus("Margins reduced to fit the header and footer")
 		}
 	})
-	form.AddButton("Cancel", e.closeDialog)
+	form.AddButton("Cancel", close)
 
 	uitheme.StyleForm(form, "Header & Footer")
 	form.SetBorder(true)
-	escapeCloses(e, form)
+	escapeCloses(form, close)
 
 	e.App.SetRoot(centredModal(form, 62, 19), true).SetFocus(form)
 }

@@ -23,8 +23,9 @@ type Editor struct {
 	View   *tview.TextView
 	Status *tview.TextView
 
-	lastW, lastH int
-	flashSeq     int
+	lastW, lastH        int
+	flashSeq            int
+	showFormattingMarks bool
 }
 
 func NewEditor(app *tview.Application, doc *document.Document) *Editor {
@@ -88,7 +89,7 @@ func (e *Editor) redraw() {
 		e.Doc.SetDisplayWidth(w)
 	}
 	top, _ := e.View.GetScrollOffset()
-	e.View.SetText(e.Doc.StyledTextWithCursor())
+	e.View.SetText(e.Doc.StyledTextWithCursorAndMarks(e.showFormattingMarks))
 	if h > 0 {
 		row := e.Doc.CursorRow()
 		if row < top {

@@ -27,6 +27,20 @@ const (
 	AlignRight
 )
 
+const maxParagraphSpaceAfter = 10
+
+type ParagraphStyle uint8
+
+const (
+	ParagraphNormal ParagraphStyle = iota
+	ParagraphTitle
+	ParagraphHeading1
+	ParagraphHeading2
+	ParagraphHeading3
+	ParagraphQuote
+	ParagraphCode
+)
+
 // Run is a contiguous piece of text with the same style and colours.
 type Run struct {
 	Text  string
@@ -37,9 +51,17 @@ type Run struct {
 
 // Paragraph is a list of runs; a hard break starts a new paragraph.
 type Paragraph struct {
-	Runs      []Run
-	Align     Align
-	PageBreak bool
+	Runs       []Run
+	Align      Align
+	ParaStyle  ParagraphStyle
+	SpaceAfter int
+	PageBreak  bool
+}
+
+type OutlineEntry struct {
+	Paragraph int
+	Level     int
+	Text      string
 }
 
 // Document is a word-processor model: paragraphs of styled runs.

@@ -28,7 +28,7 @@ func getClip() []Paragraph {
 	defer clipMu.Unlock()
 	out := make([]Paragraph, len(clip))
 	for i, p := range clip {
-		out[i] = Paragraph{Runs: cloneRuns(p.Runs), Align: p.Align}
+		out[i] = cloneParagraph(p)
 	}
 	return out
 }
@@ -45,6 +45,11 @@ func runeLen(runs []Run) int {
 
 func cloneRuns(runs []Run) []Run {
 	return append([]Run(nil), runs...)
+}
+
+func cloneParagraph(p Paragraph) Paragraph {
+	p.Runs = cloneRuns(p.Runs)
+	return p
 }
 
 // normalizeRuns drops empty runs and merges look-alike neighbours; never returns nil.
@@ -206,8 +211,11 @@ func (d *Document) selectedParagraphs() []Paragraph {
 			to = eo
 		}
 		out = append(out, Paragraph{
-			Runs:  normalizeRuns(sliceRuns(p.Runs, from, to)),
-			Align: p.Align,
+			Runs:       normalizeRuns(sliceRuns(p.Runs, from, to)),
+			Align:      p.Align,
+			ParaStyle:  p.ParaStyle,
+			SpaceAfter: p.SpaceAfter,
+			PageBreak:  p.PageBreak,
 		})
 	}
 	return out
@@ -319,9 +327,11 @@ func (d *Document) deleteSelectionLocked() bool {
 		head := sliceRuns(d.Paragraphs[sp].Runs, 0, so)
 		tail := sliceRuns(d.Paragraphs[ep].Runs, eo, runeLen(d.Paragraphs[ep].Runs))
 		d.Paragraphs[sp] = Paragraph{
-			Runs:      normalizeRuns(append(head, tail...)),
-			Align:     d.Paragraphs[sp].Align,
-			PageBreak: d.Paragraphs[sp].PageBreak,
+			Runs:       normalizeRuns(append(head, tail...)),
+			Align:      d.Paragraphs[sp].Align,
+			ParaStyle:  d.Paragraphs[sp].ParaStyle,
+			SpaceAfter: d.Paragraphs[sp].SpaceAfter,
+			PageBreak:  d.Paragraphs[sp].PageBreak,
 		}
 		d.Paragraphs = append(d.Paragraphs[:sp+1], d.Paragraphs[ep+1:]...)
 	}
@@ -388,18 +398,29 @@ func (d *Document) Paste() bool {
 	if len(items) == 1 {
 		runs := append(cloneRuns(left.Runs), items[0].Runs...)
 		runs = append(runs, right.Runs...)
-		d.Paragraphs[d.CursorPara] = Paragraph{Runs: normalizeRuns(runs), Align: left.Align, PageBreak: left.PageBreak}
+		d.Paragraphs[d.CursorPara] = Paragraph{
+			Runs:       normalizeRuns(runs),
+			Align:      left.Align,
+			ParaStyle:  left.ParaStyle,
+			SpaceAfter: left.SpaceAfter,
+			PageBreak:  left.PageBreak,
+		}
 		d.CursorOff += runeLen(items[0].Runs)
 	} else {
 		last := items[len(items)-1]
 		first := Paragraph{
-			Runs:      normalizeRuns(append(cloneRuns(left.Runs), items[0].Runs...)),
-			Align:     left.Align,
-			PageBreak: left.PageBreak,
+			Runs:       normalizeRuns(append(cloneRuns(left.Runs), items[0].Runs...)),
+			Align:      left.Align,
+			ParaStyle:  left.ParaStyle,
+			SpaceAfter: left.SpaceAfter,
+			PageBreak:  left.PageBreak,
 		}
 		lastP := Paragraph{
-			Runs:  normalizeRuns(append(cloneRuns(last.Runs), right.Runs...)),
-			Align: last.Align,
+			Runs:       normalizeRuns(append(cloneRuns(last.Runs), right.Runs...)),
+			Align:      last.Align,
+			ParaStyle:  last.ParaStyle,
+			SpaceAfter: last.SpaceAfter,
+			PageBreak:  last.PageBreak,
 		}
 		newParas := []Paragraph{first}
 		newParas = append(newParas, items[1:len(items)-1]...)
@@ -468,7 +489,6 @@ func (d *Document) SetSelectionColor(background bool, value string) bool {
 	d.Dirty = true
 	return true
 }
-
 
 // ApplyActiveToSelection applies the typing style and colours to the selection.
 func (d *Document) ApplyActiveToSelection() bool {

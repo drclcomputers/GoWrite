@@ -34,7 +34,7 @@ const (
 func (d *Document) takeSnapshot() historyEntry {
 	ps := make([]Paragraph, len(d.Paragraphs))
 	for i, p := range d.Paragraphs {
-		ps[i] = Paragraph{Runs: cloneRuns(p.Runs), Align: p.Align, PageBreak: p.PageBreak}
+		ps[i] = cloneParagraph(p)
 	}
 	return historyEntry{
 		Paragraphs: ps,
@@ -51,7 +51,9 @@ func sameContent(a, b historyEntry) bool {
 	}
 	for i := range a.Paragraphs {
 		pa, pb := a.Paragraphs[i], b.Paragraphs[i]
-		if pa.Align != pb.Align || pa.PageBreak != pb.PageBreak || !slices.Equal(pa.Runs, pb.Runs) {
+		if pa.Align != pb.Align || pa.ParaStyle != pb.ParaStyle ||
+			pa.SpaceAfter != pb.SpaceAfter || pa.PageBreak != pb.PageBreak ||
+			!slices.Equal(pa.Runs, pb.Runs) {
 			return false
 		}
 	}

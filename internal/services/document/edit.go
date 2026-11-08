@@ -44,8 +44,10 @@ func (d *Document) InsertRune(r rune) {
 				left, _ := d.splitParaAtCursor()
 				d.Paragraphs[d.CursorPara] = left
 				newPara := Paragraph{
-					Runs:  []Run{{Text: next, Style: d.ActiveStyle, Fg: d.ActiveFg, Bg: d.ActiveBg}},
-					Align: left.Align,
+					Runs:       []Run{{Text: next, Style: d.ActiveStyle, Fg: d.ActiveFg, Bg: d.ActiveBg}},
+					Align:      left.Align,
+					ParaStyle:  left.ParaStyle,
+					SpaceAfter: left.SpaceAfter,
 				}
 				d.Paragraphs = append(d.Paragraphs[:d.CursorPara+1],
 					append([]Paragraph{newPara}, d.Paragraphs[d.CursorPara+1:]...)...)
@@ -137,11 +139,27 @@ func (d *Document) splitParaAtCursor() (left, right Paragraph) {
 			if len(rightRuns) == 0 {
 				rightRuns = []Run{{Text: "", Style: StyleNone}}
 			}
-			return Paragraph{Runs: leftRuns, Align: p.Align, PageBreak: p.PageBreak}, Paragraph{Runs: rightRuns, Align: p.Align}
+			return Paragraph{
+				Runs:       leftRuns,
+				Align:      p.Align,
+				ParaStyle:  p.ParaStyle,
+				SpaceAfter: p.SpaceAfter,
+				PageBreak:  p.PageBreak,
+			}, Paragraph{
+				Runs:       rightRuns,
+				Align:      p.Align,
+				ParaStyle:  p.ParaStyle,
+				SpaceAfter: p.SpaceAfter,
+			}
 		}
 		pos += runLen
 	}
-	return p, Paragraph{Runs: []Run{{Text: "", Style: StyleNone}}, Align: p.Align}
+	return p, Paragraph{
+		Runs:       []Run{{Text: "", Style: StyleNone}},
+		Align:      p.Align,
+		ParaStyle:  p.ParaStyle,
+		SpaceAfter: p.SpaceAfter,
+	}
 }
 
 func (d *Document) Backspace() {
@@ -286,9 +304,11 @@ func (d *Document) InsertPageBreak() {
 		d.Paragraphs[d.CursorPara].PageBreak = true
 	case d.CursorOff == paraLen:
 		next := Paragraph{
-			Runs:      []Run{{Text: "", Style: StyleNone}},
-			Align:     para.Align,
-			PageBreak: true,
+			Runs:       []Run{{Text: "", Style: StyleNone}},
+			Align:      para.Align,
+			ParaStyle:  para.ParaStyle,
+			SpaceAfter: para.SpaceAfter,
+			PageBreak:  true,
 		}
 		d.Paragraphs = append(d.Paragraphs, next)
 		d.CursorPara++
@@ -316,7 +336,10 @@ func (d *Document) InsertText(s string) {
 	d.ensureCursor()
 	d.pushHistory()
 	d.deleteSelectionLocked()
+	d.insertTextContentLocked(s)
+}
 
+func (d *Document) insertTextContentLocked(s string) {
 	parts := strings.Split(strings.ReplaceAll(strings.ReplaceAll(s, "\r\n", "\n"), "\r", "\n"), "\n")
 	style, fg, bg := d.ActiveStyle, d.ActiveFg, d.ActiveBg
 
@@ -327,17 +350,28 @@ func (d *Document) InsertText(s string) {
 		left, right := d.splitParaAtCursor()
 		// First fragment stays on the current paragraph.
 		firstRuns := normalizeRuns(append(cloneRuns(left.Runs), Run{Text: parts[0], Style: style, Fg: fg, Bg: bg}))
-		d.Paragraphs[d.CursorPara] = Paragraph{Runs: firstRuns, Align: left.Align, PageBreak: left.PageBreak}
+		d.Paragraphs[d.CursorPara] = Paragraph{
+			Runs:       firstRuns,
+			Align:      left.Align,
+			ParaStyle:  left.ParaStyle,
+			SpaceAfter: left.SpaceAfter,
+			PageBreak:  left.PageBreak,
+		}
 
 		// Middle full paragraphs.
 		middles := make([]Paragraph, 0, len(parts)-2)
 		for _, part := range parts[1 : len(parts)-1] {
-			middles = append(middles, Paragraph{Runs: []Run{{Text: part, Style: style, Fg: fg, Bg: bg}}, Align: left.Align})
+			middles = append(middles, Paragraph{
+				Runs:       []Run{{Text: part, Style: style, Fg: fg, Bg: bg}},
+				Align:      left.Align,
+				ParaStyle:  left.ParaStyle,
+				SpaceAfter: left.SpaceAfter,
+			})
 		}
 
 		// Last fragment merges with the right half.
 		lastRuns := normalizeRuns(append([]Run{{Text: parts[len(parts)-1], Style: style, Fg: fg, Bg: bg}}, right.Runs...))
-		lastP := Paragraph{Runs: lastRuns, Align: left.Align}
+		lastP := Paragraph{Runs: lastRuns, Align: left.Align, ParaStyle: left.ParaStyle, SpaceAfter: left.SpaceAfter}
 
 		tail := append([]Paragraph(nil), d.Paragraphs[d.CursorPara+1:]...)
 		d.Paragraphs = append(append(d.Paragraphs[:d.CursorPara+1], middles...), append([]Paragraph{lastP}, tail...)...)
@@ -392,15 +426,26 @@ func (d *Document) TransformSelection(fn func(string) string) bool {
 	} else {
 		left, right := d.splitParaAtCursor()
 		firstRuns := normalizeRuns(append(cloneRuns(left.Runs), Run{Text: parts[0], Style: style, Fg: fg, Bg: bg}))
-		d.Paragraphs[d.CursorPara] = Paragraph{Runs: firstRuns, Align: left.Align, PageBreak: left.PageBreak}
+		d.Paragraphs[d.CursorPara] = Paragraph{
+			Runs:       firstRuns,
+			Align:      left.Align,
+			ParaStyle:  left.ParaStyle,
+			SpaceAfter: left.SpaceAfter,
+			PageBreak:  left.PageBreak,
+		}
 
 		middles := make([]Paragraph, 0, len(parts)-2)
 		for _, part := range parts[1 : len(parts)-1] {
-			middles = append(middles, Paragraph{Runs: []Run{{Text: part, Style: style, Fg: fg, Bg: bg}}, Align: left.Align})
+			middles = append(middles, Paragraph{
+				Runs:       []Run{{Text: part, Style: style, Fg: fg, Bg: bg}},
+				Align:      left.Align,
+				ParaStyle:  left.ParaStyle,
+				SpaceAfter: left.SpaceAfter,
+			})
 		}
 
 		lastRuns := normalizeRuns(append([]Run{{Text: parts[len(parts)-1], Style: style, Fg: fg, Bg: bg}}, right.Runs...))
-		lastP := Paragraph{Runs: lastRuns, Align: left.Align}
+		lastP := Paragraph{Runs: lastRuns, Align: left.Align, ParaStyle: left.ParaStyle, SpaceAfter: left.SpaceAfter}
 
 		tail := append([]Paragraph(nil), d.Paragraphs[d.CursorPara+1:]...)
 		d.Paragraphs = append(append(d.Paragraphs[:d.CursorPara+1], middles...), append([]Paragraph{lastP}, tail...)...)

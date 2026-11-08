@@ -46,9 +46,59 @@ func (e *Editor) showFormatDialog() {
 			e.Doc.SetActiveStyle(e.Doc.ActiveStyleFlags() &^ document.StyleStrike)
 		}
 	})
+	styleForm.AddDropDown("Transform", []string{
+		"None", "UPPERCASE", "lowercase", "Title Case", "Sentence case",
+		"iNVERT cASE", "Reverse", "Collapse spaces",
+	}, 0, func(option string, _ int) {
+		var transform func(string) string
+		switch option {
+		case "UPPERCASE":
+			transform = stringsToUpper
+		case "lowercase":
+			transform = stringsToLower
+		case "Title Case":
+			transform = titleCase
+		case "Sentence case":
+			transform = sentenceCase
+		case "iNVERT cASE":
+			transform = invertCase
+		case "Reverse":
+			transform = reverseString
+		case "Collapse spaces":
+			transform = collapseSpaces
+		default:
+			return
+		}
+		e.Doc.TransformSelection(transform)
+		e.closeFormatAndRedraw()
+	})
 	uitheme.StyleForm(styleForm, "Style")
 
-	alignForm := tview.NewForm()
+	paragraphForm := tview.NewForm()
+	paragraphStyles := []document.ParagraphStyle{
+		document.ParagraphNormal,
+		document.ParagraphTitle,
+		document.ParagraphHeading1,
+		document.ParagraphHeading2,
+		document.ParagraphHeading3,
+		document.ParagraphQuote,
+		document.ParagraphCode,
+	}
+	styleNames := make([]string, len(paragraphStyles))
+	styleIndex := 0
+	for i, style := range paragraphStyles {
+		styleNames[i] = style.String()
+		if style == e.Doc.CurrentParagraphStyle() {
+			styleIndex = i
+		}
+	}
+	paragraphForm.AddDropDown("Style", styleNames, styleIndex, func(_ string, index int) {
+		if index >= 0 && index < len(paragraphStyles) {
+			e.Doc.SetParagraphStyle(paragraphStyles[index])
+			e.redraw()
+		}
+	})
+
 	alignIndex := 0
 	switch e.Doc.CurrentAlign() {
 	case document.AlignCenter:
@@ -56,7 +106,7 @@ func (e *Editor) showFormatDialog() {
 	case document.AlignRight:
 		alignIndex = 2
 	}
-	alignForm.AddDropDown("Align", []string{"Left", "Center", "Right"}, alignIndex, func(option string, _ int) {
+	paragraphForm.AddDropDown("Align", []string{"Left", "Center", "Right"}, alignIndex, func(option string, _ int) {
 		switch option {
 		case "Left":
 			e.Doc.SetParagraphAlign(document.AlignLeft)
@@ -66,7 +116,23 @@ func (e *Editor) showFormatDialog() {
 			e.Doc.SetParagraphAlign(document.AlignRight)
 		}
 	})
-	uitheme.StyleForm(alignForm, "Alignment")
+
+	spacingValues := []int{0, 1, 2, 3, 4, 5, 10}
+	spacingOptions := []string{"0 rows", "1 row", "2 rows", "3 rows", "4 rows", "5 rows", "10 rows"}
+	spacingIndex := 0
+	for i, rows := range spacingValues {
+		if rows == e.Doc.CurrentParagraphSpaceAfter() {
+			spacingIndex = i
+			break
+		}
+	}
+	paragraphForm.AddDropDown("Space after", spacingOptions, spacingIndex, func(_ string, index int) {
+		if index >= 0 && index < len(spacingValues) {
+			e.Doc.SetParagraphSpaceAfter(spacingValues[index])
+			e.redraw()
+		}
+	})
+	uitheme.StyleForm(paragraphForm, "Paragraph")
 
 	textColorBtn := makePanelButton("Text Color", func() { e.showColorPicker(false) })
 	bgColorBtn := makePanelButton("Background", func() { e.showColorPicker(true) })
@@ -127,12 +193,21 @@ func (e *Editor) showFormatDialog() {
 		}},
 	})
 
+	viewPanel := tview.NewForm()
+	viewPanel.AddCheckbox("Formatting marks", e.showFormattingMarks, func(checked bool) {
+		e.showFormattingMarks = checked
+		e.redraw()
+	})
+	viewPanel.AddButton("Outline…", func() { e.showOutlineDialog() })
+	uitheme.StyleForm(viewPanel, "View")
+
 	insertPanel := buttonPanel(e.App, "Insert", []struct {
 		label string
 		fn    func()
 	}{
 		{"Date & Time…", func() { e.showDateTimeDialog() }},
 		{"Symbols…", func() { e.showSymbolGrid() }},
+		{"Table…", func() { e.showInsertTableDialog() }},
 		{"Page Break", func() {
 			e.Doc.InsertPageBreak()
 			e.closeFormatAndRedraw()
@@ -140,55 +215,31 @@ func (e *Editor) showFormatDialog() {
 	})
 	insertBox := panelInBox(insertPanel)
 
-	xformPanel := buttonPanel(e.App, "Case & Transform", []struct {
+	pagePanel := buttonPanel(e.App, "Page Setup", []struct {
 		label string
 		fn    func()
 	}{
-		{"UPPERCASE", func() {
-			e.Doc.TransformSelection(stringsToUpper)
-			e.closeFormatAndRedraw()
-		}},
-		{"lowercase", func() {
-			e.Doc.TransformSelection(stringsToLower)
-			e.closeFormatAndRedraw()
-		}},
-		{"Title Case", func() {
-			e.Doc.TransformSelection(titleCase)
-			e.closeFormatAndRedraw()
-		}},
-		{"Sentence case", func() {
-			e.Doc.TransformSelection(sentenceCase)
-			e.closeFormatAndRedraw()
-		}},
-		{"iNVERT cASE", func() {
-			e.Doc.TransformSelection(invertCase)
-			e.closeFormatAndRedraw()
-		}},
-		{"Reverse", func() {
-			e.Doc.TransformSelection(reverseString)
-			e.closeFormatAndRedraw()
-		}},
-		{"Collapse spaces", func() {
-			e.Doc.TransformSelection(collapseSpaces)
-			e.closeFormatAndRedraw()
-		}},
+		{"Page Setup…", e.showPageSetupFromFormat},
+		{"Header & Footer…", e.showHeaderFooterFromFormat},
 	})
-	xformBox := panelInBox(xformPanel)
+	pageBox := panelInBox(pagePanel)
 
 	// ── Layout ──────────────────────────────────────────────────────────────
 	leftCol := tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(styleForm, 0, 3, true).
-		AddItem(alignForm, 0, 1, false).
-		AddItem(colorBox, 7, 0, false)
+		AddItem(styleForm, 0, 1, true).
+		AddItem(colorBox, 0, 1, false)
 
-	midCol := panelInBox(listPanel)
+	midCol := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(panelInBox(listPanel), 0, 3, false).
+		AddItem(panelInBox(viewPanel), 0, 1, false)
 
 	rightCol := tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(insertBox, 0, 1, false).
-		AddItem(xformBox, 0, 2, false)
+		AddItem(insertBox, 0, 3, false).
+		AddItem(paragraphForm, 0, 2, false).
+		AddItem(pageBox, 0, 2, false)
 
 	columns := tview.NewFlex().
-		AddItem(leftCol, 0, 1, true).
+		AddItem(leftCol, 0, 1, false).
 		AddItem(midCol, 0, 1, false).
 		AddItem(rightCol, 0, 1, false)
 
@@ -208,7 +259,7 @@ func (e *Editor) showFormatDialog() {
 		SetTitleColor(uitheme.Amber).
 		SetBorderColor(uitheme.Line)
 
-	sections := []tview.Primitive{styleForm, alignForm, colorPanel, listPanel, insertPanel, xformPanel}
+	sections := []tview.Primitive{styleForm, colorPanel, listPanel, viewPanel, insertPanel, paragraphForm, pagePanel}
 	secIdx := 0
 	markFormatSection(sections, secIdx)
 

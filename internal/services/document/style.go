@@ -109,6 +109,118 @@ func (d *Document) CurrentAlign() Align {
 	return d.Paragraphs[d.CursorPara].Align
 }
 
+func (d *Document) SetParagraphStyle(style ParagraphStyle) {
+	if style > ParagraphCode {
+		return
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.ensureCursor()
+	first, last := d.cursorParagraphs()
+	changed := false
+	for i := first; i <= last; i++ {
+		if d.Paragraphs[i].ParaStyle != style {
+			changed = true
+			break
+		}
+	}
+	if !changed {
+		return
+	}
+	d.pushHistory()
+	for i := first; i <= last; i++ {
+		d.Paragraphs[i].ParaStyle = style
+	}
+	d.Dirty = true
+}
+
+func (d *Document) CurrentParagraphStyle() ParagraphStyle {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	if d.CursorPara < 0 || d.CursorPara >= len(d.Paragraphs) {
+		return ParagraphNormal
+	}
+	return d.Paragraphs[d.CursorPara].ParaStyle
+}
+
+func (d *Document) SetParagraphSpaceAfter(rows int) {
+	rows = min(max(rows, 0), maxParagraphSpaceAfter)
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.ensureCursor()
+	first, last := d.cursorParagraphs()
+	changed := false
+	for i := first; i <= last; i++ {
+		if d.Paragraphs[i].SpaceAfter != rows {
+			changed = true
+			break
+		}
+	}
+	if !changed {
+		return
+	}
+	d.pushHistory()
+	for i := first; i <= last; i++ {
+		d.Paragraphs[i].SpaceAfter = rows
+	}
+	d.Dirty = true
+}
+
+func (d *Document) CurrentParagraphSpaceAfter() int {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	if d.CursorPara < 0 || d.CursorPara >= len(d.Paragraphs) {
+		return 0
+	}
+	return d.Paragraphs[d.CursorPara].SpaceAfter
+}
+
+func (s ParagraphStyle) String() string {
+	switch s {
+	case ParagraphTitle:
+		return "Title"
+	case ParagraphHeading1:
+		return "Heading 1"
+	case ParagraphHeading2:
+		return "Heading 2"
+	case ParagraphHeading3:
+		return "Heading 3"
+	case ParagraphQuote:
+		return "Quote"
+	case ParagraphCode:
+		return "Code"
+	default:
+		return "Normal"
+	}
+}
+
+func (s ParagraphStyle) OutlineLevel() int {
+	switch s {
+	case ParagraphHeading1:
+		return 1
+	case ParagraphHeading2:
+		return 2
+	case ParagraphHeading3:
+		return 3
+	default:
+		return 0
+	}
+}
+
+func (d *Document) Outline() []OutlineEntry {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	var entries []OutlineEntry
+	for i, p := range d.Paragraphs {
+		level := p.ParaStyle.OutlineLevel()
+		text := strings.TrimSpace(plainOf(p))
+		if level > 0 && text != "" {
+			entries = append(entries, OutlineEntry{Paragraph: i, Level: level, Text: text})
+		}
+	}
+	return entries
+}
+
 func (d *Document) SetActiveFg(fg string) {
 	d.mu.Lock()
 	defer d.mu.Unlock()

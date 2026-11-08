@@ -14,12 +14,12 @@ import (
 )
 
 const (
-	tabWidth  = 4
-	caretOpen = "[-:-:-][black:#f0d090]"
+	tabWidth   = 4
+	caretOpen  = "[-:-:-][black:#f0d090]"
 	caretClose = "[-:-:-]"
 	caretGlyph = "▌"
-	selFg     = "#e8ecf4"
-	selBg     = "#3e5c7a"
+	selFg      = "#e8ecf4"
+	selBg      = "#3e5c7a"
 )
 
 type visualLine struct {
@@ -157,16 +157,52 @@ func (d *Document) wrapWidth() int {
 	return d.geometry().bodyW
 }
 
-func displayText(s string, style Style) string {
+func displayText(s string, style Style, formattingMarks bool) string {
 	s = decorateRunText(s, style)
-	s = tview.Escape(s)
-	return strings.ReplaceAll(s, "\t", strings.Repeat(" ", tabWidth))
+	if formattingMarks {
+		s = strings.ReplaceAll(s, "\t", "→"+strings.Repeat("·", tabWidth-1))
+		s = strings.ReplaceAll(s, " ", "·")
+	} else {
+		s = strings.ReplaceAll(s, "\t", strings.Repeat(" ", tabWidth))
+	}
+	return tview.Escape(s)
+}
+
+func paragraphRunStyle(p Paragraph, run Run) (Style, string, string) {
+	style, fg, bg := run.Style, run.Fg, run.Bg
+	switch p.ParaStyle {
+	case ParagraphTitle:
+		style |= StyleBold
+		if fg == "" {
+			fg = "#f0d090"
+		}
+	case ParagraphHeading1:
+		style |= StyleBold
+		if fg == "" {
+			fg = "#5ec8c8"
+		}
+	case ParagraphHeading2:
+		style |= StyleBold
+		if fg == "" {
+			fg = "#8ecae6"
+		}
+	case ParagraphHeading3:
+		style |= StyleBold
+	case ParagraphQuote:
+		style |= StyleItalic
+	case ParagraphCode:
+		if fg == "" {
+			fg = "#8ecae6"
+		}
+	}
+	return style, fg, bg
 }
 
 // writeRange writes the runes [from, to) of paragraph p with their styles.
-func writeRange(b *strings.Builder, p Paragraph, from, to, caret, selFrom, selTo int) {
+func writeRange(b *strings.Builder, p Paragraph, from, to, caret, selFrom, selTo int, formattingMarks bool) {
 	pos := 0
 	for _, run := range p.Runs {
+		style, fg, bg := paragraphRunStyle(p, run)
 		runes := []rune(run.Text)
 		rs, re := pos, pos+len(runes)
 		pos = re
@@ -195,22 +231,27 @@ func writeRange(b *strings.Builder, p Paragraph, from, to, caret, selFrom, selTo
 			switch {
 			case caret >= 0 && abs == caret:
 				if seg[0] == '\t' {
-					b.WriteString(caretOpen + " " + caretClose)
-					b.WriteString(strings.Repeat(" ", tabWidth-1))
+					if formattingMarks {
+						b.WriteString(caretOpen + "→" + caretClose)
+						b.WriteString(strings.Repeat("·", tabWidth-1))
+					} else {
+						b.WriteString(caretOpen + " " + caretClose)
+						b.WriteString(strings.Repeat(" ", tabWidth-1))
+					}
 				} else {
 					b.WriteString(caretOpen)
-					b.WriteString(displayText(string(seg), run.Style))
+					b.WriteString(displayText(string(seg), style, formattingMarks))
 					b.WriteString(caretClose)
 				}
 			case selFrom >= 0 && abs >= selFrom && rs+z <= selTo:
-				open, cl := styleTags(run.Style, selFg, selBg)
+				open, cl := styleTags(style, selFg, selBg)
 				b.WriteString(open)
-				b.WriteString(displayText(string(seg), run.Style))
+				b.WriteString(displayText(string(seg), style, formattingMarks))
 				b.WriteString(cl)
 			default:
-				open, cl := styleTags(run.Style, run.Fg, run.Bg)
+				open, cl := styleTags(style, fg, bg)
 				b.WriteString(open)
-				b.WriteString(displayText(string(seg), run.Style))
+				b.WriteString(displayText(string(seg), style, formattingMarks))
 				b.WriteString(cl)
 			}
 		}
@@ -218,7 +259,7 @@ func writeRange(b *strings.Builder, p Paragraph, from, to, caret, selFrom, selTo
 }
 
 // render builds the tview-tagged text, page by page.
-func (d *Document) render(withCaret bool) (string, int) {
+func (d *Document) render(withCaret, formattingMarks bool) (string, int) {
 	if len(d.Paragraphs) == 0 {
 		if withCaret {
 			return caretOpen + caretGlyph + caretClose, 0
@@ -296,6 +337,9 @@ func (d *Document) render(withCaret bool) (string, int) {
 				b.WriteString("\n")
 			}
 		},
+		space: func(_, _ int) {
+			textRow("")
+		},
 		para: func(pi int, r []rune, l []visualLine) {
 			p, rs, lines = d.Paragraphs[pi], r, l
 
@@ -351,7 +395,7 @@ func (d *Document) render(withCaret bool) (string, int) {
 				vEnd++
 			}
 
-			writeRange(&lineBuf, p, ln.Start, vEnd, caret, selFrom, selTo)
+			writeRange(&lineBuf, p, ln.Start, vEnd, caret, selFrom, selTo, formattingMarks)
 			glyph := hasCaret && (caret < ln.Start || caret >= vEnd)
 			if glyph {
 				lineBuf.WriteString(caretOpen + caretGlyph + caretClose)
@@ -368,10 +412,6 @@ func (d *Document) render(withCaret bool) (string, int) {
 				}
 			}
 
-			writeMargin()
-			b.WriteString("│" + ml)
-			b.WriteString(lineBuf.String())
-
 			lineWidth := pad + widthOf(rs[ln.Start:vEnd])
 			if glyph {
 				lineWidth++
@@ -379,11 +419,30 @@ func (d *Document) render(withCaret bool) (string, int) {
 			if breakSel && li == len(lines)-1 {
 				lineWidth++
 			}
+
+			markInRightMargin := false
+			if formattingMarks && li == len(lines)-1 {
+				if lineWidth < g.bodyW {
+					lineBuf.WriteString("¶")
+					lineWidth++
+				} else if ps.MarginRight > 0 {
+					markInRightMargin = true
+				}
+			}
+
+			writeMargin()
+			b.WriteString("│" + ml)
+			b.WriteString(lineBuf.String())
+
 			// Tags are zero-width, so wrapping to bodyW cannot overflow.
 			if lineWidth < g.bodyW {
 				b.WriteString(strings.Repeat(" ", g.bodyW-lineWidth))
 			}
-			b.WriteString(mr + "│\n")
+			rightMargin := mr
+			if markInRightMargin {
+				rightMargin = "¶" + strings.Repeat(" ", ps.MarginRight-1)
+			}
+			b.WriteString(rightMargin + "│\n")
 		},
 	})
 
@@ -393,14 +452,21 @@ func (d *Document) render(withCaret bool) (string, int) {
 func (d *Document) StyledText() string {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
-	s, _ := d.render(false)
+	s, _ := d.render(false, false)
 	return s
 }
 
 func (d *Document) StyledTextWithCursor() string {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
-	s, _ := d.render(true)
+	s, _ := d.render(true, false)
+	return s
+}
+
+func (d *Document) StyledTextWithCursorAndMarks(formattingMarks bool) string {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	s, _ := d.render(true, formattingMarks)
 	return s
 }
 

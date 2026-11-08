@@ -235,3 +235,20 @@ func TestRenderEscapesTags(t *testing.T) {
 		t.Errorf("literal [red] would be parsed as a colour tag: %q", out)
 	}
 }
+
+func TestFormattingMarksRenderSpacesTabsAndParagraphs(t *testing.T) {
+	d := newTestDoc(30, "a b\tc", "")
+	out := tagRe.ReplaceAllString(d.StyledTextWithCursorAndMarks(true), "")
+	if !strings.Contains(out, "a·b→···c¶") {
+		t.Fatalf("formatting marks not rendered: %q", out)
+	}
+	if got := strings.Count(out, "¶"); got != len(d.Paragraphs) {
+		t.Errorf("rendered %d paragraph marks, want %d", got, len(d.Paragraphs))
+	}
+	if strings.Contains(d.StyledText(), "·") || strings.Contains(d.StyledText(), "¶") {
+		t.Fatal("formatting marks should be hidden in the default rendering")
+	}
+	if got := plainOf(d.Paragraphs[0]); got != "a b\tc" {
+		t.Fatalf("rendering changed document text to %q", got)
+	}
+}

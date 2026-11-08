@@ -19,10 +19,10 @@ func (e *Editor) closeDialog() {
 	e.redraw()
 }
 
-func escapeCloses(e *Editor, form *tview.Form) {
+func escapeCloses(form *tview.Form, close func()) {
 	form.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() == tcell.KeyEscape {
-			e.closeDialog()
+			close()
 			return nil
 		}
 		return event
@@ -39,6 +39,14 @@ func indexOf(list []string, s string) int {
 }
 
 func (e *Editor) showPageSetup() {
+	e.showPageSetupWithClose(e.closeDialog)
+}
+
+func (e *Editor) showPageSetupFromFormat() {
+	e.showPageSetupWithClose(e.showFormatDialog)
+}
+
+func (e *Editor) showPageSetupWithClose(close func()) {
 	ps := e.Doc.GetPageSettings()
 	form := tview.NewForm()
 	form.SetItemPadding(0)
@@ -79,20 +87,16 @@ func (e *Editor) showPageSetup() {
 
 	form.AddButton("Apply", func() {
 		shrunk := apply()
-		e.closeDialog()
+		close()
 		if shrunk {
 			e.flashStatus("Margins reduced to fit the page")
 		}
 	})
-	form.AddButton("Header & Footer", func() {
-		apply()
-		e.showHeaderFooter()
-	})
-	form.AddButton("Cancel", e.closeDialog)
+	form.AddButton("Cancel", close)
 
 	uitheme.StyleForm(form, "Page Setup")
 	form.SetBorder(true)
-	escapeCloses(e, form)
+	escapeCloses(form, close)
 
 	e.App.SetRoot(centredModal(form, 52, 15), true).SetFocus(form)
 }

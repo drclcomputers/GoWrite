@@ -7,6 +7,8 @@ package ui
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 	"unicode"
 
@@ -60,6 +62,51 @@ func (e *Editor) showDateTimeDialog() {
 
 	modal := centredModal(list, 48, 16)
 	e.App.SetRoot(modal, true).SetFocus(list)
+}
+
+func (e *Editor) showInsertTableDialog() {
+	form := tview.NewForm()
+	uitheme.StyleForm(form, "Insert Table")
+
+	rows := tview.NewInputField().
+		SetLabel("Rows ").
+		SetText("3").
+		SetFieldWidth(5)
+	columns := tview.NewInputField().
+		SetLabel("Columns ").
+		SetText("3").
+		SetFieldWidth(5)
+	form.AddFormItem(rows)
+	form.AddFormItem(columns)
+	dialog := centredModal(form, 44, 10)
+
+	form.AddButton("Insert", func() {
+		rowCount, err := strconv.Atoi(strings.TrimSpace(rows.GetText()))
+		if err != nil {
+			ShowErrorModal(e.App, dialog, "Rows must be a number from 1 to 20")
+			return
+		}
+		columnCount, err := strconv.Atoi(strings.TrimSpace(columns.GetText()))
+		if err != nil {
+			ShowErrorModal(e.App, dialog, "Columns must be a number from 1 to 10")
+			return
+		}
+		if err := e.Doc.InsertTable(rowCount, columnCount); err != nil {
+			ShowErrorModal(e.App, dialog, err.Error())
+			return
+		}
+		e.closeFormatAndRedraw()
+	})
+	form.AddButton("Cancel", func() { e.showFormatDialog() })
+	form.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Key() == tcell.KeyEscape {
+			e.showFormatDialog()
+			return nil
+		}
+		return event
+	})
+
+	e.App.SetRoot(dialog, true).SetFocus(rows)
 }
 
 // ── Symbol grid ─────────────────────────────────────────────────────────────
