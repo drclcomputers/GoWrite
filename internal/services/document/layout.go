@@ -285,19 +285,29 @@ func (d *Document) render(withCaret, formattingMarks bool) (string, int) {
 	}
 	drawPageTop := func() {
 		writeMargin()
-		b.WriteString("┌" + strings.Repeat("─", ps.Width) + "┐\n")
+		b.WriteString("┌")
+		b.WriteString(strings.Repeat("-", ps.Width))
+		b.WriteString("┐\n")
 	}
 	drawPageBottom := func() {
 		writeMargin()
-		b.WriteString("└" + strings.Repeat("─", ps.Width) + "┘\n")
+		b.WriteString("┌")
+		b.WriteString(strings.Repeat("─", ps.Width))
+		b.WriteString("┐\n")
 	}
 	blankRow := func() {
 		writeMargin()
-		b.WriteString("│" + strings.Repeat(" ", ps.Width) + "│\n")
+		b.WriteByte('|')
+		b.WriteString(strings.Repeat(" ", ps.Width))
+		b.WriteString("|\n")
 	}
 	textRow := func(plain string) {
 		writeMargin()
-		b.WriteString("│" + ml + tview.Escape(plain) + mr + "│\n")
+		b.WriteString("│")
+		b.WriteString(ml)
+		b.WriteString(tview.Escape(plain))
+		b.WriteString(mr)
+		b.WriteString("│\n")
 	}
 
 	sp, so, ep, eo, selOK := d.selectionRange()
@@ -408,7 +418,9 @@ func (d *Document) render(withCaret, formattingMarks bool) (string, int) {
 				}
 				if used+1 <= g.bodyW {
 					open, cl := styleTags(StyleNone, selFg, selBg)
-					lineBuf.WriteString(open + " " + cl)
+					lineBuf.WriteString(open)
+					lineBuf.WriteString(" ")
+					lineBuf.WriteString(cl)
 				}
 			}
 
@@ -431,7 +443,8 @@ func (d *Document) render(withCaret, formattingMarks bool) (string, int) {
 			}
 
 			writeMargin()
-			b.WriteString("│" + ml)
+			b.WriteString("│")
+			b.WriteString(ml)
 			b.WriteString(lineBuf.String())
 
 			// Tags are zero-width, so wrapping to bodyW cannot overflow.
@@ -442,7 +455,8 @@ func (d *Document) render(withCaret, formattingMarks bool) (string, int) {
 			if markInRightMargin {
 				rightMargin = "¶" + strings.Repeat(" ", ps.MarginRight-1)
 			}
-			b.WriteString(rightMargin + "│\n")
+			b.WriteString(rightMargin)
+			b.WriteString("│\n")
 		},
 	})
 
