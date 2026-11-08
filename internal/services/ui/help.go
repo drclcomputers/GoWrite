@@ -20,10 +20,10 @@ func (e *Editor) showHelp() {
   Alt + D          Header, footer, page numbers
   Alt + S          Save .gdoc / .docx
   Alt + Shift + S  Save as
-  Alt + Shift + E  Export .txt / .rtf / .docx
+  Alt + Shift + E  Open save dialog (text format selected)
   Alt + F          Find
   ?                This help
-  Esc              File menu (save, export, exit)
+  Esc              Save dialog (location, format, exit)
 
 [#7dcea0::b]STYLING[-]
   Alt + B          Toggle Bold

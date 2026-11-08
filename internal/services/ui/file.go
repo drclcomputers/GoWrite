@@ -17,7 +17,7 @@ import (
 func (e *Editor) saveDocument() {
 	filename := e.Doc.GetFilename()
 	ext := strings.ToLower(filepath.Ext(filename))
-	if ext == ".gdoc" || ext == ".docx" {
+	if ext == ".gdoc" || ext == ".docx" || ext == ".txt" || ext == ".rtf" {
 		if err := e.saveDocumentToFile(filename); err != nil {
 			ShowErrorModal(e.App, e.Root, fmt.Sprintf("Could not save %s: %v", filename, err))
 			return
@@ -64,6 +64,13 @@ func (e *Editor) saveDocumentToFile(filename string) error {
 			return err
 		}
 		e.Doc.SetTitle(state.Title)
+		e.Doc.SetFilename(filename)
+		e.Doc.SetDirty(false)
+		return nil
+	case ".txt", ".rtf":
+		if err := e.exportToFile(filename); err != nil {
+			return err
+		}
 		e.Doc.SetFilename(filename)
 		e.Doc.SetDirty(false)
 		return nil

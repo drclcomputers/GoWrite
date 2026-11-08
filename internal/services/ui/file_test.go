@@ -97,3 +97,23 @@ func TestDOCXSaveAndLoadRestoreDocument(t *testing.T) {
 		t.Fatalf("DOCX load lost document content: %#v", state)
 	}
 }
+
+func TestSaveAsTextUpdatesActiveFilenameAndCleanState(t *testing.T) {
+	doc := document.New()
+	doc.LoadText("plain text")
+	doc.SetDirty(true)
+	editor := &Editor{Doc: doc}
+	filename := filepath.Join(t.TempDir(), "sample.txt")
+
+	if err := editor.saveDocumentToFile(filename); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filename)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "plain text" || doc.GetFilename() != filename || doc.IsDirty() {
+		t.Fatalf("TXT save did not update the active save state: text=%q filename=%q dirty=%v",
+			string(data), doc.GetFilename(), doc.IsDirty())
+	}
+}

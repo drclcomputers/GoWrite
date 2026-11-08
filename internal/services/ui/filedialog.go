@@ -69,19 +69,8 @@ func (e *Editor) showFileDialogWithSaveCallback(mode fileDialogMode, afterSave f
 
 	var formats []fileFormatOption
 	switch mode {
-	case fileDialogSave:
-		formats = []fileFormatOption{
-			{".gdoc", "GoWrite native document"},
-			{".docx", "Microsoft Word document"},
-			{".txt", "Plain text export"},
-			{".rtf", "Rich text export"},
-		}
-	case fileDialogExport:
-		formats = []fileFormatOption{
-			{".txt", "Plain text"},
-			{".rtf", "Rich text"},
-			{".docx", "Microsoft Word document"},
-		}
+	case fileDialogSave, fileDialogExport:
+		formats = allDocumentFormats
 	}
 
 	selectedFormat := 0
@@ -98,12 +87,18 @@ func (e *Editor) showFileDialogWithSaveCallback(mode fileDialogMode, afterSave f
 			selectedFormat = 0
 		case ".docx":
 			selectedFormat = 1
+		case ".txt":
+			selectedFormat = 2
+		case ".rtf":
+			selectedFormat = 3
 		}
 	} else if mode == fileDialogExport {
 		switch strings.ToLower(filepath.Ext(currentFilename)) {
 		case ".rtf":
-			selectedFormat = 1
-		case ".docx":
+			selectedFormat = 3
+		case ".txt":
+			selectedFormat = 2
+		default:
 			selectedFormat = 2
 		}
 	}
@@ -137,7 +132,7 @@ func (e *Editor) showFileDialogWithSaveCallback(mode fileDialogMode, afterSave f
 	updateList = func(path string) {
 		fileList.Clear()
 		currentPath = path
-		pathLabel.SetText(fmt.Sprintf("[#f0d090]Location[-]  %s", utils.PrettyPath(path, "no")))
+		pathLabel.SetText(fmt.Sprintf("[#f0d090]Location:[-]  %s", utils.PrettyPath(path, "no")))
 
 		if path != filepath.Dir(path) {
 			parent := filepath.Dir(path)
@@ -253,6 +248,34 @@ func (e *Editor) showFileDialogWithSaveCallback(mode fileDialogMode, afterSave f
 		}
 		action()
 	}
+	writeToPath := func(filename string, checkOverwrite bool) {
+		action := func() {
+			extension := strings.ToLower(filepath.Ext(filename))
+			var err error
+			switch extension {
+			case ".gdoc", ".docx", ".txt", ".rtf":
+				err = e.saveDocumentToFile(filename)
+			default:
+				err = fmt.Errorf("unsupported file format %q", extension)
+			}
+			if err != nil {
+				showDialogError(fmt.Sprintf("Could not write %s: %v", filename, err))
+				return
+			}
+			if afterSave != nil {
+				afterSave()
+				return
+			}
+			e.App.SetRoot(e.Root, true).SetFocus(e.View)
+			e.redraw()
+			e.flashStatus(fmt.Sprintf("Saved %s", filepath.Base(filename)))
+		}
+		if checkOverwrite {
+			confirmOverwrite(filename, action)
+		} else {
+			action()
+		}
+	}
 
 	if mode == fileDialogOpen {
 		form.AddButton("Open", func() {
@@ -278,63 +301,36 @@ func (e *Editor) showFileDialogWithSaveCallback(mode fileDialogMode, afterSave f
 			e.redraw()
 		})
 	} else {
-		if mode == fileDialogSave {
-			form.AddButton("Save", func() {
-				extension := formats[selectedFormat].extension
-				if extension != ".gdoc" && extension != ".docx" {
-					showDialogError("Choose .gdoc or .docx to save; use Export for .txt or .rtf")
-					return
-				}
-				filename, err := resolveFilename(extension)
-				if err != nil {
-					showDialogError(err.Error())
-					return
-				}
-				confirmOverwrite(filename, func() {
-					if err := e.saveDocumentToFile(filename); err != nil {
-						showDialogError(fmt.Sprintf("Could not save %s: %v", filename, err))
-						return
-					}
-					if afterSave != nil {
-						afterSave()
-						return
-					}
-					e.App.SetRoot(e.Root, true).SetFocus(e.View)
-					e.redraw()
-				})
-			})
-		}
-		form.AddButton("Export", func() {
-			extension := formats[selectedFormat].extension
-			if extension == ".gdoc" {
-				showDialogError("Choose .txt, .rtf, or .docx to export")
+		form.AddButton("Save", func() {
+			currentExtension := strings.ToLower(filepath.Ext(currentFilename))
+			if formats[selectedFormat].extension == currentExtension {
+				writeToPath(currentFilename, false)
 				return
 			}
-			filename, err := resolveFilename(extension)
+			filename, err := resolveFilename(formats[selectedFormat].extension)
 			if err != nil {
 				showDialogError(err.Error())
 				return
 			}
-			confirmOverwrite(filename, func() {
-				if err := e.exportToFile(filename); err != nil {
-					showDialogError(fmt.Sprintf("Could not export %s: %v", filename, err))
-					return
-				}
-				e.App.SetRoot(e.Root, true).SetFocus(e.View)
-				e.redraw()
-				e.flashStatus(fmt.Sprintf("Exported %s", filepath.Base(filename)))
-			})
+			writeToPath(filename, true)
+		})
+		form.AddButton("Save As", func() {
+			filename, err := resolveFilename(formats[selectedFormat].extension)
+			if err != nil {
+				showDialogError(err.Error())
+				return
+			}
+			writeToPath(filename, true)
 		})
 	}
-	form.AddButton("Cancel", func() {
-		e.App.SetRoot(e.Root, true).SetFocus(e.View)
-	})
+	form.AddButton("Cancel", func() { e.App.SetRoot(e.Root, true).SetFocus(e.View) })
+	if mode != fileDialogOpen {
+		form.AddButton("Exit", func() { e.confirmQuit() })
+	}
 	if mode == fileDialogOpen {
 		uitheme.StyleForm(form, "Open file")
-	} else if mode == fileDialogExport {
-		uitheme.StyleForm(form, "Export document")
 	} else {
-		uitheme.StyleForm(form, "Save document")
+		uitheme.StyleForm(form, "Options")
 	}
 
 	leftSection := tview.NewFlex().SetDirection(tview.FlexRow).
@@ -359,8 +355,6 @@ func (e *Editor) showFileDialogWithSaveCallback(mode fileDialogMode, afterSave f
 	switch mode {
 	case fileDialogOpen:
 		container.SetTitle(" Open Document ")
-	case fileDialogExport:
-		container.SetTitle(" Export Document ")
 	default:
 		container.SetTitle(" Save Document ")
 	}

@@ -15,35 +15,6 @@ import (
 	"github.com/rivo/tview"
 )
 
-func (e *Editor) showFileMenu() {
-	modal := tview.NewModal().
-		SetText("Choose an action").
-		AddButtons([]string{"Save", "Save As", "Export", "Exit", "Cancel"}).
-		SetDoneFunc(func(_ int, label string) {
-			switch label {
-			case "Save":
-				e.saveDocument()
-			case "Save As":
-				e.saveAsDocument()
-			case "Export":
-				e.exportDocument()
-			case "Exit":
-				e.confirmQuit()
-			default:
-				e.App.SetRoot(e.Root, true).SetFocus(e.View)
-			}
-		})
-	uitheme.StyleModal(modal, "File Menu")
-	modal.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		if event.Key() == tcell.KeyEscape {
-			e.App.SetRoot(e.Root, true).SetFocus(e.View)
-			return nil
-		}
-		return event
-	})
-	e.App.SetRoot(modal, true).SetFocus(modal)
-}
-
 func (e *Editor) confirmQuit() {
 	if !e.Doc.IsDirty() {
 		e.App.Stop()
@@ -76,7 +47,8 @@ func (e *Editor) confirmQuit() {
 func (e *Editor) saveForExit() {
 	filename := e.Doc.GetFilename()
 	ext := filepath.Ext(filename)
-	if strings.EqualFold(ext, ".gdoc") || strings.EqualFold(ext, ".docx") {
+	if strings.EqualFold(ext, ".gdoc") || strings.EqualFold(ext, ".docx") ||
+		strings.EqualFold(ext, ".txt") || strings.EqualFold(ext, ".rtf") {
 		if err := e.saveDocumentToFile(filename); err != nil {
 			ShowErrorModal(e.App, e.Root, "Could not save before exiting: "+err.Error())
 			return
