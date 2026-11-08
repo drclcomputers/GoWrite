@@ -3,15 +3,14 @@
 // This work is licensed under the terms of the MIT license.
 // For a copy, see <https://opensource.org/licenses/MIT>.
 
-package ui
+package editor
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 
-	"gowrite/internal/services/fileop"
+	fileui "gowrite/internal/services/ui/file"
 
 	"github.com/rivo/tview"
 )
@@ -44,7 +43,7 @@ func (e *Editor) saveNativeToFile(filename string) error {
 	if state.Title == "" || state.Title == "Untitled" {
 		state.Title = strings.TrimSuffix(filepath.Base(filename), filepath.Ext(filename))
 	}
-	if err := fileop.SaveGDoc(filename, state, e.showFormattingMarks); err != nil {
+	if err := fileui.SaveDocument(filename, state, e.showFormattingMarks); err != nil {
 		return err
 	}
 	e.Doc.SetTitle(state.Title)
@@ -62,7 +61,7 @@ func (e *Editor) saveDocumentToFile(filename string) error {
 		if state.Title == "" || state.Title == "Untitled" {
 			state.Title = strings.TrimSuffix(filepath.Base(filename), filepath.Ext(filename))
 		}
-		if err := fileop.SaveDOCX(filename, state); err != nil {
+		if err := fileui.SaveDocument(filename, state, e.showFormattingMarks); err != nil {
 			return err
 		}
 		e.Doc.SetTitle(state.Title)
@@ -70,7 +69,7 @@ func (e *Editor) saveDocumentToFile(filename string) error {
 		e.Doc.SetDirty(false)
 		return nil
 	case ".txt", ".rtf":
-		if err := e.exportToFile(filename); err != nil {
+		if err := fileui.SaveDocument(filename, e.Doc.Snapshot(), e.showFormattingMarks); err != nil {
 			return err
 		}
 		e.Doc.SetFilename(filename)
@@ -82,23 +81,13 @@ func (e *Editor) saveDocumentToFile(filename string) error {
 }
 
 func (e *Editor) exportToFile(filename string) error {
-	state := e.Doc.Snapshot()
-	switch strings.ToLower(filepath.Ext(filename)) {
-	case ".txt":
-		return fileop.ExportTXT(filename, state)
-	case ".rtf":
-		return fileop.ExportRTF(filename, state)
-	case ".docx":
-		return fileop.ExportDOCX(filename, state)
-	default:
-		return fmt.Errorf("unsupported export format %q", filepath.Ext(filename))
-	}
+	return fileui.ExportDocument(filename, e.Doc.Snapshot())
 }
 
 func (e *Editor) loadFromFile(filename string) error {
 	switch strings.ToLower(filepath.Ext(filename)) {
 	case ".gdoc":
-		file, err := fileop.LoadGDoc(filename)
+		file, err := fileui.LoadNative(filename)
 		if err != nil {
 			return err
 		}
@@ -107,7 +96,7 @@ func (e *Editor) loadFromFile(filename string) error {
 		}
 		e.showFormattingMarks = file.Editor.ShowFormattingMarks
 	case ".docx":
-		state, err := fileop.LoadDOCX(filename)
+		state, err := fileui.LoadWord(filename)
 		if err != nil {
 			return err
 		}
@@ -119,12 +108,10 @@ func (e *Editor) loadFromFile(filename string) error {
 		}
 		e.showFormattingMarks = false
 	case ".txt", ".md":
-		data, err := os.ReadFile(filename)
+		text, err := fileui.ReadText(filename)
 		if err != nil {
 			return err
 		}
-		text := strings.ReplaceAll(string(data), "\r\n", "\n")
-		text = strings.ReplaceAll(text, "\r", "\n")
 		e.Doc.LoadText(text)
 		e.Doc.SetTitle(strings.TrimSuffix(filepath.Base(filename), filepath.Ext(filename)))
 		e.showFormattingMarks = false

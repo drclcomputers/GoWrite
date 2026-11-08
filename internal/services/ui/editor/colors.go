@@ -3,7 +3,7 @@
 // This work is licensed under the terms of the MIT license.
 // For a copy, see <https://opensource.org/licenses/MIT>.
 
-package ui
+package editor
 
 import (
 	"fmt"
@@ -95,8 +95,12 @@ func (e *Editor) showColorPicker(background bool) {
 		SetText(fmt.Sprintf("%d", r)).
 		SetFieldWidth(5).
 		SetAcceptanceFunc(func(text string, lastChar rune) bool {
-			if text == "" { return true }
-			if val, err := strconv.Atoi(text); err == nil { return val >= 0 && val <= 255 }
+			if text == "" {
+				return true
+			}
+			if val, err := strconv.Atoi(text); err == nil {
+				return val >= 0 && val <= 255
+			}
 			return false
 		})
 
@@ -105,8 +109,12 @@ func (e *Editor) showColorPicker(background bool) {
 		SetText(fmt.Sprintf("%d", g)).
 		SetFieldWidth(5).
 		SetAcceptanceFunc(func(text string, lastChar rune) bool {
-			if text == "" { return true }
-			if val, err := strconv.Atoi(text); err == nil { return val >= 0 && val <= 255 }
+			if text == "" {
+				return true
+			}
+			if val, err := strconv.Atoi(text); err == nil {
+				return val >= 0 && val <= 255
+			}
 			return false
 		})
 
@@ -115,8 +123,12 @@ func (e *Editor) showColorPicker(background bool) {
 		SetText(fmt.Sprintf("%d", b)).
 		SetFieldWidth(5).
 		SetAcceptanceFunc(func(text string, lastChar rune) bool {
-			if text == "" { return true }
-			if val, err := strconv.Atoi(text); err == nil { return val >= 0 && val <= 255 }
+			if text == "" {
+				return true
+			}
+			if val, err := strconv.Atoi(text); err == nil {
+				return val >= 0 && val <= 255
+			}
 			return false
 		})
 
@@ -126,15 +138,23 @@ func (e *Editor) showColorPicker(background bool) {
 		SetFieldWidth(9)
 
 	updatePreview := func() {
-		if updating { return }
+		if updating {
+			return
+		}
 		updating = true
 
 		rText := redInput.GetText()
 		gText := greenInput.GetText()
 		bText := blueInput.GetText()
-		if rText == "" { rText = "0" }
-		if gText == "" { gText = "0" }
-		if bText == "" { bText = "0" }
+		if rText == "" {
+			rText = "0"
+		}
+		if gText == "" {
+			gText = "0"
+		}
+		if bText == "" {
+			bText = "0"
+		}
 
 		rV, _ := strconv.Atoi(rText)
 		gV, _ := strconv.Atoi(gText)
@@ -149,7 +169,9 @@ func (e *Editor) showColorPicker(background bool) {
 	}
 
 	updateFromHex := func() {
-		if updating { return }
+		if updating {
+			return
+		}
 		updating = true
 		hex := hexInput.GetText()
 		if len(hex) == 7 && hex[0] == '#' {
@@ -166,10 +188,26 @@ func (e *Editor) showColorPicker(background bool) {
 		updating = false
 	}
 
-	redInput.SetDoneFunc(func(key tcell.Key) { if key == tcell.KeyEnter || key == tcell.KeyTab { updatePreview() } })
-	greenInput.SetDoneFunc(func(key tcell.Key) { if key == tcell.KeyEnter || key == tcell.KeyTab { updatePreview() } })
-	blueInput.SetDoneFunc(func(key tcell.Key) { if key == tcell.KeyEnter || key == tcell.KeyTab { updatePreview() } })
-	hexInput.SetDoneFunc(func(key tcell.Key) { if key == tcell.KeyEnter || key == tcell.KeyTab { updateFromHex() } })
+	redInput.SetDoneFunc(func(key tcell.Key) {
+		if key == tcell.KeyEnter || key == tcell.KeyTab {
+			updatePreview()
+		}
+	})
+	greenInput.SetDoneFunc(func(key tcell.Key) {
+		if key == tcell.KeyEnter || key == tcell.KeyTab {
+			updatePreview()
+		}
+	})
+	blueInput.SetDoneFunc(func(key tcell.Key) {
+		if key == tcell.KeyEnter || key == tcell.KeyTab {
+			updatePreview()
+		}
+	})
+	hexInput.SetDoneFunc(func(key tcell.Key) {
+		if key == tcell.KeyEnter || key == tcell.KeyTab {
+			updateFromHex()
+		}
+	})
 
 	customForm.AddFormItem(redInput).
 		AddFormItem(greenInput).
@@ -179,7 +217,11 @@ func (e *Editor) showColorPicker(background bool) {
 	applyCustom := func() {
 		hex := hexInput.GetText()
 		if !e.Doc.SetSelectionColor(background, hex) {
-			if background { e.Doc.SetActiveBg(hex) } else { e.Doc.SetActiveFg(hex) }
+			if background {
+				e.Doc.SetActiveBg(hex)
+			} else {
+				e.Doc.SetActiveFg(hex)
+			}
 		}
 		e.App.SetRoot(e.Root, true).SetFocus(e.View)
 		e.redraw()
@@ -211,7 +253,11 @@ func (e *Editor) showColorPicker(background bool) {
 		if idx >= 0 && idx < len(palette) {
 			c := palette[idx]
 			if !e.Doc.SetSelectionColor(background, c.Value) {
-				if background { e.Doc.SetActiveBg(c.Value) } else { e.Doc.SetActiveFg(c.Value) }
+				if background {
+					e.Doc.SetActiveBg(c.Value)
+				} else {
+					e.Doc.SetActiveFg(c.Value)
+				}
 			}
 			e.App.SetRoot(e.Root, true).SetFocus(e.View)
 			e.redraw()

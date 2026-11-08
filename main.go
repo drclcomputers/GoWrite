@@ -11,7 +11,8 @@ import (
 	"flag"
 	"fmt"
 	"gowrite/internal/services/document"
-	"gowrite/internal/services/ui"
+	"gowrite/internal/services/ui/editor"
+	"gowrite/internal/services/ui/startmenu"
 	"log"
 	"os"
 	"path/filepath"
@@ -56,8 +57,8 @@ func main() {
 	}
 
 	var doc *document.Document
-	startChoice := ui.StartNew
-	var startMenu *ui.StartMenu
+	startChoice := startmenu.StartNew
+	var startMenu *startmenu.StartMenu
 
 	if filename != "" {
 		data, err := os.ReadFile(filename)
@@ -72,13 +73,13 @@ func main() {
 		doc.SetFilename(filename)
 		doc.SetTitle(filepath.Base(filename))
 	} else {
-		startChoice, startMenu = ui.StartMenuUI(app)
+		startChoice, startMenu = startmenu.StartMenuUI(app)
 		switch startChoice {
-		case ui.StartQuit:
+		case startmenu.StartQuit:
 			return
-		case ui.StartOpen:
+		case startmenu.StartOpen:
 			doc = document.New()
-		case ui.StartNew:
+		case startmenu.StartNew:
 			doc = document.New()
 		default:
 			doc = document.New()
@@ -89,24 +90,24 @@ func main() {
 		return
 	}
 
-	editor := ui.NewEditor(app, doc)
-	editor.Mount()
+	editorUI := editor.NewEditor(app, doc)
+	editorUI.Mount()
 
 	if startMenu != nil {
-		startMenu.SetChooseHandler(func(choice ui.StartMenuResult) {
+		startMenu.SetChooseHandler(func(choice startmenu.StartMenuResult) {
 			switch choice {
-			case ui.StartNew:
-				app.SetRoot(editor.Root, true).SetFocus(editor.View)
-			case ui.StartOpen:
-				editor.OpenDocument(startMenu.View, startMenu.Focus)
-			case ui.StartQuit:
+			case startmenu.StartNew:
+				app.SetRoot(editorUI.Root, true).SetFocus(editorUI.View)
+			case startmenu.StartOpen:
+				editorUI.OpenDocument(startMenu.View, startMenu.Focus)
+			case startmenu.StartQuit:
 				app.Stop()
 			}
 		})
 	}
 
-	if startChoice == ui.StartOpen {
-		editor.OpenDocument(startMenu.View, startMenu.Focus)
+	if startChoice == startmenu.StartOpen {
+		editorUI.OpenDocument(startMenu.View, startMenu.Focus)
 	}
 
 	if err := app.Run(); err != nil {

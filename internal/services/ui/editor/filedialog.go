@@ -3,7 +3,7 @@
 // This work is licensed under the terms of the MIT license.
 // For a copy, see <https://opensource.org/licenses/MIT>.
 
-package ui
+package editor
 
 import (
 	"fmt"
@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	fileui "gowrite/internal/services/ui/file"
 	"gowrite/internal/services/uitheme"
 	"gowrite/internal/utils"
 
@@ -25,11 +26,6 @@ const (
 	fileDialogSave
 	fileDialogExport
 )
-
-type fileFormatOption struct {
-	extension   string
-	description string
-}
 
 func (e *Editor) showFileDialog(mode fileDialogMode) {
 	e.showFileDialogWithReturn(mode, nil, e.Root, e.View)
@@ -84,10 +80,10 @@ func (e *Editor) showFileDialogWithReturn(mode fileDialogMode, afterSave func(),
 		SetFieldWidth(0)
 	form.AddFormItem(filenameInput)
 
-	var formats []fileFormatOption
+	var formats []fileui.FormatOption
 	switch mode {
 	case fileDialogSave, fileDialogExport:
-		formats = allDocumentFormats
+		formats = fileui.DocumentFormats()
 	}
 
 	selectedFormat := 0
@@ -122,14 +118,14 @@ func (e *Editor) showFileDialogWithReturn(mode fileDialogMode, afterSave func(),
 	if mode == fileDialogOpen {
 		filenameInput.SetText("")
 	} else {
-		filenameInput.SetText(baseName + formatsExtension(formats, selectedFormat))
+		filenameInput.SetText(baseName + fileui.Extension(formats, selectedFormat))
 	}
 
 	var formatDropdown *tview.DropDown
 	if mode != fileDialogOpen {
 		options := make([]string, len(formats))
 		for i, format := range formats {
-			options[i] = fmt.Sprintf("%s - %s", format.extension, format.description)
+			options[i] = fmt.Sprintf("%s - %s", format.Extension, format.Description)
 		}
 		formatDropdown = tview.NewDropDown().
 			SetLabel("Format: ").
@@ -138,7 +134,7 @@ func (e *Editor) showFileDialogWithReturn(mode fileDialogMode, afterSave func(),
 					return
 				}
 				selectedFormat = index
-				filenameInput.SetText(withFileExtension(filenameInput.GetText(), formats[index].extension, formats))
+				filenameInput.SetText(fileui.WithExtension(filenameInput.GetText(), formats[index].Extension, formats))
 			}).
 			SetCurrentOption(selectedFormat)
 		form.AddFormItem(formatDropdown)
@@ -180,13 +176,13 @@ func (e *Editor) showFileDialogWithReturn(mode fileDialogMode, afterSave func(),
 			if err != nil {
 				continue
 			}
-			size := formatFileSize(info.Size())
+			size := fileui.FormatSize(info.Size())
 			fullPath := filepath.Join(path, name)
 			fileList.AddItem(name, size, 0, func() {
 				filenameInput.SetText(fullPath)
 				if formatDropdown != nil {
 					for i, format := range formats {
-						if strings.EqualFold(ext, format.extension) {
+						if strings.EqualFold(ext, format.Extension) {
 							selectedFormat = i
 							formatDropdown.SetCurrentOption(i)
 							break
@@ -256,7 +252,7 @@ func (e *Editor) showFileDialogWithReturn(mode fileDialogMode, afterSave func(),
 			return "", fmt.Errorf("filename cannot be empty")
 		}
 		if extension != "" {
-			filename = withFileExtension(filename, extension, allDocumentFormats)
+			filename = fileui.WithExtension(filename, extension, fileui.DocumentFormats())
 		}
 		if strings.HasPrefix(filename, "~") {
 			filename = filepath.Join(homeDir, strings.TrimLeft(strings.TrimPrefix(filename, "~"), string(os.PathSeparator)))
@@ -351,11 +347,11 @@ func (e *Editor) showFileDialogWithReturn(mode fileDialogMode, afterSave func(),
 	} else {
 		form.AddButton("Save", func() {
 			currentExtension := strings.ToLower(filepath.Ext(currentFilename))
-			if formats[selectedFormat].extension == currentExtension {
+			if formats[selectedFormat].Extension == currentExtension {
 				writeToPath(currentFilename, false)
 				return
 			}
-			filename, err := resolveFilename(formats[selectedFormat].extension)
+			filename, err := resolveFilename(formats[selectedFormat].Extension)
 			if err != nil {
 				showDialogError(err.Error())
 				return
@@ -363,7 +359,7 @@ func (e *Editor) showFileDialogWithReturn(mode fileDialogMode, afterSave func(),
 			writeToPath(filename, true)
 		})
 		form.AddButton("Save As", func() {
-			filename, err := resolveFilename(formats[selectedFormat].extension)
+			filename, err := resolveFilename(formats[selectedFormat].Extension)
 			if err != nil {
 				showDialogError(err.Error())
 				return
@@ -423,44 +419,4 @@ func (e *Editor) showFileDialogWithReturn(mode fileDialogMode, afterSave func(),
 	})
 	dialog = container
 	e.App.SetRoot(container, true).SetFocus(form)
-}
-
-var allDocumentFormats = []fileFormatOption{
-	{".gdoc", "GoWrite native document"},
-	{".docx", "Microsoft Word document"},
-	{".txt", "Plain text"},
-	{".rtf", "Rich text"},
-}
-
-func formatsExtension(formats []fileFormatOption, index int) string {
-	if index < 0 || index >= len(formats) {
-		return ".gdoc"
-	}
-	return formats[index].extension
-}
-
-func withFileExtension(filename, extension string, formats []fileFormatOption) string {
-	filename = strings.TrimSpace(filename)
-	ext := filepath.Ext(filename)
-	if strings.EqualFold(ext, extension) {
-		return filename
-	}
-	for _, format := range formats {
-		if strings.EqualFold(ext, format.extension) {
-			filename = strings.TrimSuffix(filename, ext)
-			break
-		}
-	}
-	return filename + extension
-}
-
-func formatFileSize(size int64) string {
-	switch {
-	case size < 1024:
-		return fmt.Sprintf("%d B", size)
-	case size < 1024*1024:
-		return fmt.Sprintf("%.1f KB", float64(size)/1024)
-	default:
-		return fmt.Sprintf("%.1f MB", float64(size)/(1024*1024))
-	}
 }

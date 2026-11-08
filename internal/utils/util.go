@@ -11,7 +11,7 @@ import (
 	"strings"
 )
 
-const VER = "0.2.0"
+const VER = "0.8.0"
 
 // PrettyPath shortens paths under the home directory and separates components for display.
 func PrettyPath(p, context string) string {
