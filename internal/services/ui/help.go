@@ -18,7 +18,9 @@ func (e *Editor) showHelp() {
   Alt + Enter      Format (style, lists, view, insert, page setup)
   Alt + P          Page setup (size, margins)
   Alt + D          Header, footer, page numbers
-  Alt + S          Save
+  Alt + S          Save native .gdoc
+  Alt + Shift + S  Save as .gdoc
+  Alt + Shift + E  Export .txt / .rtf
   Alt + F          Find
   ?                This help
   Esc              Quit (or clear selection)

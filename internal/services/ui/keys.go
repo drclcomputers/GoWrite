@@ -72,6 +72,10 @@ func (e *Editor) handleKeys(event *tcell.EventKey) *tcell.EventKey {
 			e.showHeaderFooter()
 			return nil
 		case 'e', 'E':
+			if hasShift {
+				e.exportDocument()
+				return nil
+			}
 			e.Doc.SetParagraphAlign(document.AlignCenter)
 			e.redraw()
 			return nil
@@ -113,7 +117,11 @@ func (e *Editor) handleKeys(event *tcell.EventKey) *tcell.EventKey {
 			e.redraw()
 			return nil
 		case 's', 'S':
-			e.saveDocument()
+			if hasShift {
+				e.saveAsDocument()
+			} else {
+				e.saveDocument()
+			}
 			return nil
 		case 'u', 'U':
 			e.toggleStyle(document.StyleUnderline)
@@ -140,7 +148,6 @@ func (e *Editor) handleKeys(event *tcell.EventKey) *tcell.EventKey {
 			return nil
 		}
 	}
-
 
 	shift := mod&tcell.ModShift != 0
 	altShift := mod&tcell.ModAlt != 0 && shift

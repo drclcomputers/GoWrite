@@ -43,19 +43,19 @@ const (
 
 // Run is a contiguous piece of text with the same style and colours.
 type Run struct {
-	Text  string
-	Style Style
-	Fg    string
-	Bg    string
+	Text  string `json:"text"`
+	Style Style  `json:"style"`
+	Fg    string `json:"foreground,omitempty"`
+	Bg    string `json:"background,omitempty"`
 }
 
 // Paragraph is a list of runs; a hard break starts a new paragraph.
 type Paragraph struct {
-	Runs       []Run
-	Align      Align
-	ParaStyle  ParagraphStyle
-	SpaceAfter int
-	PageBreak  bool
+	Runs       []Run          `json:"runs"`
+	Align      Align          `json:"alignment"`
+	ParaStyle  ParagraphStyle `json:"style"`
+	SpaceAfter int            `json:"space_after"`
+	PageBreak  bool           `json:"page_break,omitempty"`
 }
 
 type OutlineEntry struct {

@@ -31,7 +31,9 @@ const (
 // HeaderFooter is the text of a running header or footer. It may use the
 // tokens {page}, {pages} and {title}.
 type HeaderFooter struct {
-	Left, Center, Right string
+	Left   string `json:"left"`
+	Center string `json:"center"`
+	Right  string `json:"right"`
 }
 
 func (h HeaderFooter) empty() bool {
@@ -59,9 +61,9 @@ const (
 
 // PageNumbers places an automatic page number in the header or footer.
 type PageNumbers struct {
-	Where  NumberWhere
-	Align  Align
-	Format NumberFormat
+	Where  NumberWhere  `json:"where"`
+	Align  Align        `json:"alignment"`
+	Format NumberFormat `json:"format"`
 }
 
 const (
@@ -72,16 +74,19 @@ const (
 // PageSettings holds the on-screen paper: size, margins, header and footer.
 // Margins are in terminal cells (columns left/right, rows top/bottom).
 type PageSettings struct {
-	Size        PageSize
-	Orientation Orientation
-	Width       int
-	Height      int
+	Size        PageSize    `json:"size"`
+	Orientation Orientation `json:"orientation"`
+	Width       int         `json:"width"`
+	Height      int         `json:"height"`
 
-	MarginLeft, MarginRight, MarginTop, MarginBottom int
+	MarginLeft   int `json:"margin_left"`
+	MarginRight  int `json:"margin_right"`
+	MarginTop    int `json:"margin_top"`
+	MarginBottom int `json:"margin_bottom"`
 
-	Header      HeaderFooter
-	Footer      HeaderFooter
-	PageNumbers PageNumbers
+	Header      HeaderFooter `json:"header"`
+	Footer      HeaderFooter `json:"footer"`
+	PageNumbers PageNumbers  `json:"page_numbers"`
 }
 
 func (p PageSettings) hasHeader() bool {
