@@ -18,12 +18,12 @@ func (e *Editor) showHelp() {
   Alt + Enter      Format (style, lists, view, insert, page setup)
   Alt + P          Page setup (size, margins)
   Alt + D          Header, footer, page numbers
-  Alt + S          Save native .gdoc
-  Alt + Shift + S  Save as .gdoc
-  Alt + Shift + E  Export .txt / .rtf
+  Alt + S          Save .gdoc / .docx
+  Alt + Shift + S  Save as
+  Alt + Shift + E  Export .txt / .rtf / .docx
   Alt + F          Find
   ?                This help
-  Esc              Quit (or clear selection)
+  Esc              File menu (save, export, exit)
 
 [#7dcea0::b]STYLING[-]
   Alt + B          Toggle Bold

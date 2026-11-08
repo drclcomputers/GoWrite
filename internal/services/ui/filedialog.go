@@ -32,6 +32,10 @@ type fileFormatOption struct {
 }
 
 func (e *Editor) showFileDialog(mode fileDialogMode) {
+	e.showFileDialogWithSaveCallback(mode, nil)
+}
+
+func (e *Editor) showFileDialogWithSaveCallback(mode fileDialogMode, afterSave func()) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		ShowErrorModal(e.App, e.Root, fmt.Sprintf("Could not determine home directory: %v", err))
@@ -68,6 +72,7 @@ func (e *Editor) showFileDialog(mode fileDialogMode) {
 	case fileDialogSave:
 		formats = []fileFormatOption{
 			{".gdoc", "GoWrite native document"},
+			{".docx", "Microsoft Word document"},
 			{".txt", "Plain text export"},
 			{".rtf", "Rich text export"},
 		}
@@ -75,6 +80,7 @@ func (e *Editor) showFileDialog(mode fileDialogMode) {
 		formats = []fileFormatOption{
 			{".txt", "Plain text"},
 			{".rtf", "Rich text"},
+			{".docx", "Microsoft Word document"},
 		}
 	}
 
@@ -86,10 +92,20 @@ func (e *Editor) showFileDialog(mode fileDialogMode) {
 	if baseName == "" {
 		baseName = "Untitled"
 	}
-	if mode == fileDialogSave && strings.EqualFold(filepath.Ext(currentFilename), ".gdoc") {
-		selectedFormat = 0
-	} else if mode == fileDialogExport && strings.EqualFold(filepath.Ext(currentFilename), ".rtf") {
-		selectedFormat = 1
+	if mode == fileDialogSave {
+		switch strings.ToLower(filepath.Ext(currentFilename)) {
+		case ".gdoc":
+			selectedFormat = 0
+		case ".docx":
+			selectedFormat = 1
+		}
+	} else if mode == fileDialogExport {
+		switch strings.ToLower(filepath.Ext(currentFilename)) {
+		case ".rtf":
+			selectedFormat = 1
+		case ".docx":
+			selectedFormat = 2
+		}
 	}
 	if mode == fileDialogOpen {
 		filenameInput.SetText("")
@@ -145,7 +161,7 @@ func (e *Editor) showFileDialog(mode fileDialogMode) {
 			}
 			name := entry.Name()
 			ext := strings.ToLower(filepath.Ext(name))
-			if mode == fileDialogOpen && ext != ".gdoc" && ext != ".txt" && ext != ".md" {
+			if mode == fileDialogOpen && ext != ".gdoc" && ext != ".docx" && ext != ".txt" && ext != ".md" {
 				continue
 			}
 			info, err := entry.Info()
@@ -264,18 +280,23 @@ func (e *Editor) showFileDialog(mode fileDialogMode) {
 	} else {
 		if mode == fileDialogSave {
 			form.AddButton("Save", func() {
-				if formats[selectedFormat].extension != ".gdoc" {
-					showDialogError("Select .gdoc to save the native document; use Export for .txt or .rtf")
+				extension := formats[selectedFormat].extension
+				if extension != ".gdoc" && extension != ".docx" {
+					showDialogError("Choose .gdoc or .docx to save; use Export for .txt or .rtf")
 					return
 				}
-				filename, err := resolveFilename(".gdoc")
+				filename, err := resolveFilename(extension)
 				if err != nil {
 					showDialogError(err.Error())
 					return
 				}
 				confirmOverwrite(filename, func() {
-					if err := e.saveNativeToFile(filename); err != nil {
+					if err := e.saveDocumentToFile(filename); err != nil {
 						showDialogError(fmt.Sprintf("Could not save %s: %v", filename, err))
+						return
+					}
+					if afterSave != nil {
+						afterSave()
 						return
 					}
 					e.App.SetRoot(e.Root, true).SetFocus(e.View)
@@ -286,7 +307,7 @@ func (e *Editor) showFileDialog(mode fileDialogMode) {
 		form.AddButton("Export", func() {
 			extension := formats[selectedFormat].extension
 			if extension == ".gdoc" {
-				showDialogError("Choose .txt or .rtf to export")
+				showDialogError("Choose .txt, .rtf, or .docx to export")
 				return
 			}
 			filename, err := resolveFilename(extension)
@@ -370,6 +391,7 @@ func (e *Editor) showFileDialog(mode fileDialogMode) {
 
 var allDocumentFormats = []fileFormatOption{
 	{".gdoc", "GoWrite native document"},
+	{".docx", "Microsoft Word document"},
 	{".txt", "Plain text"},
 	{".rtf", "Rich text"},
 }

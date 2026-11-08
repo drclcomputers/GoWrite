@@ -138,7 +138,7 @@ func (e *Editor) refreshUI() {
 		line, col, page, pages, words, chars, style,
 	))
 
-	e.Status.SetText(" [#7dcea0]Document[::-]  [#f0d090]Alt+S[::-] save  [#f0d090]Alt+Shift+S[::-] save as  [#f0d090]Alt+Shift+E[::-] export  [#f0d090]Alt+Enter[::-] format  [#f0d090]?[::-] help")
+	e.Status.SetText(" [#7dcea0]Document[::-]    [#f0d090]Alt+Enter[::-] [white]format[::-]    [#f0d090]Alt+P[::-] [white]page setup[::-]    [#f0d090]Alt+S[::-] [white]save[::-]    [#f0d090]Alt+F[::-] [white]find[::-]    [#f0d090]?[::-] [white]help[::-]")
 }
 
 func (e *Editor) Mount() {

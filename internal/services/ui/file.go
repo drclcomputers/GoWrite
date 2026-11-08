@@ -16,8 +16,9 @@ import (
 
 func (e *Editor) saveDocument() {
 	filename := e.Doc.GetFilename()
-	if strings.EqualFold(filepath.Ext(filename), ".gdoc") {
-		if err := e.saveNativeToFile(filename); err != nil {
+	ext := strings.ToLower(filepath.Ext(filename))
+	if ext == ".gdoc" || ext == ".docx" {
+		if err := e.saveDocumentToFile(filename); err != nil {
 			ShowErrorModal(e.App, e.Root, fmt.Sprintf("Could not save %s: %v", filename, err))
 			return
 		}
@@ -50,6 +51,27 @@ func (e *Editor) saveNativeToFile(filename string) error {
 	return nil
 }
 
+func (e *Editor) saveDocumentToFile(filename string) error {
+	switch strings.ToLower(filepath.Ext(filename)) {
+	case ".gdoc":
+		return e.saveNativeToFile(filename)
+	case ".docx":
+		state := e.Doc.Snapshot()
+		if state.Title == "" || state.Title == "Untitled" {
+			state.Title = strings.TrimSuffix(filepath.Base(filename), filepath.Ext(filename))
+		}
+		if err := fileop.SaveDOCX(filename, state); err != nil {
+			return err
+		}
+		e.Doc.SetTitle(state.Title)
+		e.Doc.SetFilename(filename)
+		e.Doc.SetDirty(false)
+		return nil
+	default:
+		return fmt.Errorf("unsupported save format %q", filepath.Ext(filename))
+	}
+}
+
 func (e *Editor) exportToFile(filename string) error {
 	state := e.Doc.Snapshot()
 	switch strings.ToLower(filepath.Ext(filename)) {
@@ -57,6 +79,8 @@ func (e *Editor) exportToFile(filename string) error {
 		return fileop.ExportTXT(filename, state)
 	case ".rtf":
 		return fileop.ExportRTF(filename, state)
+	case ".docx":
+		return fileop.ExportDOCX(filename, state)
 	default:
 		return fmt.Errorf("unsupported export format %q", filepath.Ext(filename))
 	}
@@ -73,6 +97,18 @@ func (e *Editor) loadFromFile(filename string) error {
 			return fmt.Errorf("invalid GoWrite document: %w", err)
 		}
 		e.showFormattingMarks = file.Editor.ShowFormattingMarks
+	case ".docx":
+		state, err := fileop.LoadDOCX(filename)
+		if err != nil {
+			return err
+		}
+		if err := e.Doc.Restore(state); err != nil {
+			return fmt.Errorf("invalid DOCX document: %w", err)
+		}
+		if state.Title == "" {
+			e.Doc.SetTitle(strings.TrimSuffix(filepath.Base(filename), filepath.Ext(filename)))
+		}
+		e.showFormattingMarks = false
 	case ".txt", ".md":
 		data, err := os.ReadFile(filename)
 		if err != nil {

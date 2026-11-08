@@ -17,9 +17,8 @@ func (e *Editor) handleKeys(event *tcell.EventKey) *tcell.EventKey {
 		if e.Doc.HasSelection() {
 			e.Doc.ClearSelection()
 			e.redraw()
-			return nil
 		}
-		e.confirmQuit()
+		e.showFileMenu()
 		return nil
 	}
 

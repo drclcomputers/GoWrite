@@ -68,3 +68,32 @@ func TestExportDoesNotChangeDocumentSaveState(t *testing.T) {
 		t.Fatal("export changed the native document's save state")
 	}
 }
+
+func TestDOCXSaveAndLoadRestoreDocument(t *testing.T) {
+	doc := document.New()
+	doc.LoadText("Heading\nBody")
+	doc.SetTitle("Word document")
+	doc.Paragraphs[0].ParaStyle = document.ParagraphHeading1
+	doc.Paragraphs[1].Runs[0].Style = document.StyleItalic
+	doc.SetDirty(true)
+
+	filename := filepath.Join(t.TempDir(), "sample.docx")
+	editor := &Editor{Doc: doc}
+	if err := editor.saveDocumentToFile(filename); err != nil {
+		t.Fatal(err)
+	}
+	if doc.IsDirty() {
+		t.Fatal("DOCX save did not clear the dirty state")
+	}
+
+	loaded := &Editor{Doc: document.New()}
+	if err := loaded.loadFromFile(filename); err != nil {
+		t.Fatal(err)
+	}
+	state := loaded.Doc.Snapshot()
+	if state.Title != "Word document" ||
+		state.Paragraphs[0].ParaStyle != document.ParagraphHeading1 ||
+		state.Paragraphs[1].Runs[0].Style != document.StyleItalic {
+		t.Fatalf("DOCX load lost document content: %#v", state)
+	}
+}

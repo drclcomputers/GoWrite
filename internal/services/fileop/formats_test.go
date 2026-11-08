@@ -1,8 +1,10 @@
 package fileop
 
 import (
+	"archive/zip"
 	"bytes"
 	"compress/gzip"
+	"io"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -118,5 +120,91 @@ func TestTXTExportPreservesParagraphSpacingAndPageBreaks(t *testing.T) {
 	}
 	if got, want := string(data), "first\n\n\nsecond\fthird"; got != want {
 		t.Fatalf("TXT = %q, want %q", got, want)
+	}
+}
+
+func TestDOCXRoundTripPreservesSupportedDocumentContent(t *testing.T) {
+	doc := document.New()
+	doc.SetTitle("DOCX round trip")
+	doc.LoadText("Heading\nBody")
+	doc.Paragraphs[0].ParaStyle = document.ParagraphHeading1
+	doc.Paragraphs[0].Runs[0].Style = document.StyleBold | document.StyleUnderline
+	doc.Paragraphs[0].Runs[0].Fg = "#123456"
+	doc.Paragraphs[1].Align = document.AlignRight
+	doc.Paragraphs[1].SpaceAfter = 2
+	doc.Paragraphs[1].PageBreak = true
+	doc.Paragraphs[1].Runs[0].Text = "Body\twith\nline"
+	doc.Paragraphs[1].Runs[0].Bg = "#abcdef"
+	page := doc.GetPageSettings()
+	page.Size, page.Orientation = document.SizeLegal, document.Landscape
+	page.Width, page.Height = document.GetDimensions(page.Size, page.Orientation)
+	page.Footer.Center = "{title}"
+	page.PageNumbers = document.PageNumbers{
+		Where: document.NumFooter, Align: document.AlignCenter, Format: document.FormatPageOf,
+	}
+	doc.SetPageSettings(page)
+
+	filename := filepath.Join(t.TempDir(), "sample.docx")
+	if err := SaveDOCX(filename, doc.Snapshot()); err != nil {
+		t.Fatal(err)
+	}
+	state, err := LoadDOCX(filename)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.Title != "DOCX round trip" ||
+		state.Paragraphs[0].ParaStyle != document.ParagraphHeading1 ||
+		state.Paragraphs[0].Runs[0].Style != document.StyleBold|document.StyleUnderline ||
+		state.Paragraphs[0].Runs[0].Fg != "#123456" ||
+		state.Paragraphs[1].Align != document.AlignRight ||
+		state.Paragraphs[1].SpaceAfter != 2 ||
+		!state.Paragraphs[1].PageBreak ||
+		state.Paragraphs[1].Runs[0].Text != "Body\twith\nline" ||
+		state.Paragraphs[1].Runs[0].Bg != "#abcdef" {
+		t.Fatalf("DOCX round trip lost paragraph formatting: %#v", state)
+	}
+	if state.Page.Size != document.SizeLegal || state.Page.Orientation != document.Landscape ||
+		state.Page.Footer.Center != "DOCX round trip" ||
+		state.Page.PageNumbers.Where != document.NumFooter ||
+		state.Page.PageNumbers.Align != document.AlignCenter ||
+		state.Page.PageNumbers.Format != document.FormatPageOf {
+		t.Fatalf("DOCX round trip lost page settings: %#v", state.Page)
+	}
+}
+
+func TestDOCXImportFlattensTableCellsToTabs(t *testing.T) {
+	filename := filepath.Join(t.TempDir(), "table.docx")
+	file, err := os.Create(filename)
+	if err != nil {
+		t.Fatal(err)
+	}
+	archive := zip.NewWriter(file)
+	part, err := archive.Create("word/document.xml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = io.WriteString(part, `<?xml version="1.0" encoding="UTF-8"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:tbl><w:tr><w:tc><w:p><w:r><w:t>left</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>right</w:t></w:r></w:p></w:tc></w:tr></w:tbl></w:body></w:document>`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := archive.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	state, err := LoadDOCX(filename)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var text strings.Builder
+	if len(state.Paragraphs) == 1 {
+		for _, run := range state.Paragraphs[0].Runs {
+			text.WriteString(run.Text)
+		}
+	}
+	if len(state.Paragraphs) != 1 || text.String() != "left\tright" {
+		t.Fatalf("DOCX table was not imported as a tab-delimited row: %#v", state.Paragraphs)
 	}
 }
