@@ -5,6 +5,12 @@
 
 package document
 
+import (
+	"fmt"
+	"strconv"
+	"strings"
+)
+
 func (d *Document) InsertRune(r rune) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -17,6 +23,39 @@ func (d *Document) InsertRune(r rune) {
 	d.deleteSelectionLocked()
 
 	if r == '\n' {
+		// List auto-continuation: if the current paragraph is a list item,
+		// either continue with the next marker or exit the list when empty.
+		plain := plainOf(d.Paragraphs[d.CursorPara])
+		marker, rest, ok := parseListMarker(plain)
+		if ok {
+			// Cursor at end of a non-empty list item → continue list.
+			// Empty list item (only the marker) → stop the list.
+			content := strings.TrimSpace(rest)
+			atEnd := d.CursorOff >= len([]rune(plain))
+			if content == "" && (d.CursorOff <= len([]rune(marker)) || atEnd) {
+				// Exit list: turn this paragraph into a plain empty one.
+				d.Paragraphs[d.CursorPara].Runs = []Run{{Text: "", Style: StyleNone}}
+				d.CursorOff = 0
+				d.Dirty = true
+				return
+			}
+			if atEnd {
+				next := nextListMarker(marker)
+				left, _ := d.splitParaAtCursor()
+				d.Paragraphs[d.CursorPara] = left
+				newPara := Paragraph{
+					Runs:  []Run{{Text: next, Style: d.ActiveStyle, Fg: d.ActiveFg, Bg: d.ActiveBg}},
+					Align: left.Align,
+				}
+				d.Paragraphs = append(d.Paragraphs[:d.CursorPara+1],
+					append([]Paragraph{newPara}, d.Paragraphs[d.CursorPara+1:]...)...)
+				d.CursorPara++
+				d.CursorOff = len([]rune(next))
+				d.Dirty = true
+				return
+			}
+		}
+
 		left, right := d.splitParaAtCursor()
 		d.Paragraphs[d.CursorPara] = left
 		d.Paragraphs = append(d.Paragraphs[:d.CursorPara+1],
@@ -122,7 +161,19 @@ func (d *Document) Backspace() {
 		return
 	}
 
+	// If the cursor is immediately after a list marker, remove the whole marker
+	// (exits the list item cleanly instead of leaving a dangling "1.").
 	if d.CursorOff > 0 {
+		plain := plainOf(d.Paragraphs[d.CursorPara])
+		if marker, _, ok := parseListMarker(plain); ok {
+			mLen := len([]rune(marker))
+			if d.CursorOff == mLen {
+				d.deleteRange(0, mLen)
+				d.CursorOff = 0
+				d.Dirty = true
+				return
+			}
+		}
 		d.deleteRange(d.CursorOff-1, d.CursorOff)
 		d.CursorOff--
 		d.Dirty = true
@@ -218,3 +269,232 @@ func (d *Document) InsertPageBreak() {
 	d.Paragraphs[d.CursorPara].PageBreak = true
 	d.Dirty = true
 }
+
+// InsertText inserts plain text at the cursor (replacing any selection).
+// Newlines create new paragraphs. The active style/colours are applied.
+func (d *Document) InsertText(s string) {
+	if s == "" {
+		return
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.ensureCursor()
+	d.pushHistory()
+	d.deleteSelectionLocked()
+
+	parts := strings.Split(strings.ReplaceAll(strings.ReplaceAll(s, "\r\n", "\n"), "\r", "\n"), "\n")
+	style, fg, bg := d.ActiveStyle, d.ActiveFg, d.ActiveBg
+
+	if len(parts) == 1 {
+		d.insertIntoRuns(parts[0], style, fg, bg)
+		d.CursorOff += len([]rune(parts[0]))
+	} else {
+		left, right := d.splitParaAtCursor()
+		// First fragment stays on the current paragraph.
+		firstRuns := normalizeRuns(append(cloneRuns(left.Runs), Run{Text: parts[0], Style: style, Fg: fg, Bg: bg}))
+		d.Paragraphs[d.CursorPara] = Paragraph{Runs: firstRuns, Align: left.Align, PageBreak: left.PageBreak}
+
+		// Middle full paragraphs.
+		middles := make([]Paragraph, 0, len(parts)-2)
+		for _, part := range parts[1 : len(parts)-1] {
+			middles = append(middles, Paragraph{Runs: []Run{{Text: part, Style: style, Fg: fg, Bg: bg}}, Align: left.Align})
+		}
+
+		// Last fragment merges with the right half.
+		lastRuns := normalizeRuns(append([]Run{{Text: parts[len(parts)-1], Style: style, Fg: fg, Bg: bg}}, right.Runs...))
+		lastP := Paragraph{Runs: lastRuns, Align: left.Align}
+
+		tail := append([]Paragraph(nil), d.Paragraphs[d.CursorPara+1:]...)
+		d.Paragraphs = append(append(d.Paragraphs[:d.CursorPara+1], middles...), append([]Paragraph{lastP}, tail...)...)
+		d.CursorPara += len(parts) - 1
+		d.CursorOff = len([]rune(parts[len(parts)-1]))
+	}
+	d.goalSet = false
+	d.Dirty = true
+}
+
+// TransformSelection applies fn to the plain text of the selection (or current
+// paragraph if nothing is selected) and replaces the content with the result.
+// Styles are not preserved; the active style is used for the new text.
+func (d *Document) TransformSelection(fn func(string) string) bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.ensureCursor()
+
+	var text string
+	if _, _, _, _, ok := d.selectionRange(); ok {
+		ps := d.selectedParagraphs()
+		parts := make([]string, len(ps))
+		for i, p := range ps {
+			parts[i] = plainOf(p)
+		}
+		text = strings.Join(parts, "\n")
+	} else {
+		text = plainOf(d.Paragraphs[d.CursorPara])
+		// Select the whole paragraph so Replace can work uniformly.
+		d.hasAnchor = true
+		d.anchorPara = d.CursorPara
+		d.anchorOff = 0
+		d.CursorOff = len([]rune(text))
+	}
+
+	out := fn(text)
+	if out == text {
+		d.hasAnchor = false
+		return false
+	}
+
+	d.pushHistory()
+	d.deleteSelectionLocked()
+
+	// Re-insert transformed text (same logic as InsertText, but lock already held).
+	parts := strings.Split(strings.ReplaceAll(strings.ReplaceAll(out, "\r\n", "\n"), "\r", "\n"), "\n")
+	style, fg, bg := d.ActiveStyle, d.ActiveFg, d.ActiveBg
+
+	if len(parts) == 1 {
+		d.insertIntoRuns(parts[0], style, fg, bg)
+		d.CursorOff += len([]rune(parts[0]))
+	} else {
+		left, right := d.splitParaAtCursor()
+		firstRuns := normalizeRuns(append(cloneRuns(left.Runs), Run{Text: parts[0], Style: style, Fg: fg, Bg: bg}))
+		d.Paragraphs[d.CursorPara] = Paragraph{Runs: firstRuns, Align: left.Align, PageBreak: left.PageBreak}
+
+		middles := make([]Paragraph, 0, len(parts)-2)
+		for _, part := range parts[1 : len(parts)-1] {
+			middles = append(middles, Paragraph{Runs: []Run{{Text: part, Style: style, Fg: fg, Bg: bg}}, Align: left.Align})
+		}
+
+		lastRuns := normalizeRuns(append([]Run{{Text: parts[len(parts)-1], Style: style, Fg: fg, Bg: bg}}, right.Runs...))
+		lastP := Paragraph{Runs: lastRuns, Align: left.Align}
+
+		tail := append([]Paragraph(nil), d.Paragraphs[d.CursorPara+1:]...)
+		d.Paragraphs = append(append(d.Paragraphs[:d.CursorPara+1], middles...), append([]Paragraph{lastP}, tail...)...)
+		d.CursorPara += len(parts) - 1
+		d.CursorOff = len([]rune(parts[len(parts)-1]))
+	}
+	d.goalSet = false
+	d.Dirty = true
+	return true
+}
+
+// ApplyListPrefix turns the selected paragraphs (or the current one) into a list
+// by prepending a marker produced by prefix(i) for the i-th item (0-based).
+func (d *Document) ApplyListPrefix(prefix func(i int) string) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.ensureCursor()
+	d.pushHistory()
+
+	first, last := d.cursorParagraphs()
+	if _, _, _, _, ok := d.selectionRange(); ok {
+		sp, _, ep, _, _ := d.selectionRange()
+		first, last = sp, ep
+	}
+
+	for i := first; i <= last; i++ {
+		marker := prefix(i - first)
+		plain := plainOf(d.Paragraphs[i])
+		// Strip any existing common list marker so re-applying is clean.
+		plain = stripListMarker(plain)
+		newText := marker + plain
+		d.Paragraphs[i].Runs = []Run{{Text: newText, Style: d.ActiveStyle, Fg: d.ActiveFg, Bg: d.ActiveBg}}
+	}
+	d.hasAnchor = false
+	d.CursorPara = last
+	d.CursorOff = len([]rune(plainOf(d.Paragraphs[last])))
+	d.goalSet = false
+	d.Dirty = true
+}
+
+// parseListMarker returns the marker (including trailing space), the rest of
+// the line, and whether a recognised list marker was found at the start.
+func parseListMarker(s string) (marker, rest string, ok bool) {
+	s = strings.TrimLeft(s, " \t")
+	if s == "" {
+		return "", "", false
+	}
+	// Numbered: "1. ", "12. "
+	i := 0
+	for i < len(s) && s[i] >= '0' && s[i] <= '9' {
+		i++
+	}
+	if i > 0 && i+1 < len(s) && s[i] == '.' && s[i+1] == ' ' {
+		return s[:i+2], s[i+2:], true
+	}
+	// Lettered: "a. ", "A. "
+	if len(s) >= 3 {
+		c := s[0]
+		if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')) && s[1] == '.' && s[2] == ' ' {
+			return s[:3], s[3:], true
+		}
+	}
+	// Simple roman (i. ii. iii. …) – only common short forms
+	romans := []string{"xviii. ", "xvii. ", "xvi. ", "xv. ", "xiv. ", "xiii. ", "xii. ", "xi. ",
+		"viii. ", "vii. ", "iii. ", "ii. ", "ix. ", "iv. ", "vi. ", "xx. ", "x. ", "v. ", "i. "}
+	for _, r := range romans {
+		if strings.HasPrefix(strings.ToLower(s), r) {
+			// Preserve original case of the marker portion
+			return s[:len(r)], s[len(r):], true
+		}
+	}
+	// Bullets / checkboxes
+	for _, prefix := range []string{"[ ] ", "[x] ", "[X] ", "• ", "- ", "* ", "– ", "— "} {
+		if strings.HasPrefix(s, prefix) {
+			return prefix, s[len(prefix):], true
+		}
+	}
+	return "", s, false
+}
+
+func stripListMarker(s string) string {
+	_, rest, ok := parseListMarker(s)
+	if ok {
+		return rest
+	}
+	return s
+}
+
+// nextListMarker returns the following marker in the same style.
+func nextListMarker(marker string) string {
+	m := strings.TrimSpace(marker)
+	// Numbered
+	if n, err := strconv.Atoi(strings.TrimSuffix(m, ".")); err == nil {
+		return fmt.Sprintf("%d. ", n+1)
+	}
+	// Single letter
+	if len(m) == 2 && m[1] == '.' {
+		c := m[0]
+		if c >= 'a' && c < 'z' {
+			return string(c+1) + ". "
+		}
+		if c >= 'A' && c < 'Z' {
+			return string(c+1) + ". "
+		}
+		// wrap
+		if c == 'z' {
+			return "a. "
+		}
+		if c == 'Z' {
+			return "A. "
+		}
+	}
+	// Roman (very small table)
+	romans := []string{"i", "ii", "iii", "iv", "v", "vi", "vii", "viii", "ix", "x",
+		"xi", "xii", "xiii", "xiv", "xv", "xvi", "xvii", "xviii", "xix", "xx"}
+	lower := strings.ToLower(strings.TrimSuffix(m, "."))
+	for i, r := range romans {
+		if r == lower && i+1 < len(romans) {
+			next := romans[i+1]
+			if m[0] >= 'A' && m[0] <= 'Z' {
+				next = strings.ToUpper(next)
+			}
+			return next + ". "
+		}
+	}
+	// Bullets / checkboxes stay the same
+	if strings.HasSuffix(marker, " ") {
+		return marker
+	}
+	return marker + " "
+}
+

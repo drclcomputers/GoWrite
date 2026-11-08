@@ -31,14 +31,17 @@ func (e *Editor) handleKeys(event *tcell.EventKey) *tcell.EventKey {
 	mod := event.Modifiers()
 
 	if mod&tcell.ModAlt != 0 {
-		hasShift := mod&tcell.ModShift != 0
+		// Terminals often omit ModShift for Alt+Shift+letter and only send the
+		// uppercase rune. Treat an uppercase letter under Alt as shifted.
+		r := event.Rune()
+		hasShift := mod&tcell.ModShift != 0 || (r >= 'A' && r <= 'Z')
 
 		if event.Key() == tcell.KeyEnter {
 			e.showFormatDialog()
 			return nil
 		}
 
-		switch event.Rune() {
+		switch r {
 		case 'a', 'A':
 			if hasShift {
 				e.Doc.SelectAll()
@@ -137,6 +140,7 @@ func (e *Editor) handleKeys(event *tcell.EventKey) *tcell.EventKey {
 			return nil
 		}
 	}
+
 
 	shift := mod&tcell.ModShift != 0
 	altShift := mod&tcell.ModAlt != 0 && shift

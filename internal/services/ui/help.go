@@ -15,7 +15,7 @@ func (e *Editor) showHelp() {
   Arrows          Move cursor
   Shift+Arrows    Select text
   Type            Insert text
-  Alt+Enter       Format text
+  Alt+Enter       Format (style, lists, insert, transform)
   Alt+P           Page setup (size, margins)
   Alt+D           Header, footer, page numbers
   Alt+S           Save
@@ -33,6 +33,13 @@ func (e *Editor) showHelp() {
   Alt+Y           Background color
   Alt+L / E / R   Align left / center / right
   Alt+Shift+P     Insert page break
+
+[#8ecae6::b]FORMAT SCREEN  (Alt+Enter)[-]
+  Style / Align / Colors
+  Lists           numbered, lettered, bullets, checkboxes, roman
+                  (lists auto-continue on Enter; empty item exits)
+  Insert          Date & Time · Symbols grid · Page break
+  Case & Transform  UPPER · lower · Title · sentence · invert · …
 
 [#8ecae6::b]LESS OFTEN[-]  (Alt + the letter)
   O open          N new            G go to line       H replace
