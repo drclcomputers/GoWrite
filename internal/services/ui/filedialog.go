@@ -32,13 +32,24 @@ type fileFormatOption struct {
 }
 
 func (e *Editor) showFileDialog(mode fileDialogMode) {
-	e.showFileDialogWithSaveCallback(mode, nil)
+	e.showFileDialogWithReturn(mode, nil, e.Root, e.View)
 }
 
 func (e *Editor) showFileDialogWithSaveCallback(mode fileDialogMode, afterSave func()) {
+	e.showFileDialogWithReturn(mode, afterSave, e.Root, e.View)
+}
+
+func (e *Editor) showFileDialogWithReturn(mode fileDialogMode, afterSave func(), returnTo, returnFocus tview.Primitive) {
+	if returnTo == nil {
+		returnTo = e.Root
+	}
+	if returnFocus == nil {
+		returnFocus = e.View
+	}
+
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		ShowErrorModal(e.App, e.Root, fmt.Sprintf("Could not determine home directory: %v", err))
+		ShowErrorModal(e.App, returnTo, fmt.Sprintf("Could not determine home directory: %v", err))
 		return
 	}
 	docsPath := filepath.Join(homeDir, "Documents")
@@ -47,9 +58,15 @@ func (e *Editor) showFileDialogWithSaveCallback(mode fileDialogMode, afterSave f
 	}
 
 	currentFilename := e.Doc.GetFilename()
-	currentPath := docsPath
-	if currentFilename != "" && mode != fileDialogOpen {
-		currentPath = filepath.Dir(currentFilename)
+	currentPath, err := os.Getwd()
+	if err != nil {
+		ShowErrorModal(e.App, returnTo, fmt.Sprintf("Could not determine current directory: %v", err))
+		return
+	}
+	currentPath, err = filepath.Abs(currentPath)
+	if err != nil {
+		ShowErrorModal(e.App, returnTo, fmt.Sprintf("Could not resolve current directory: %v", err))
+		return
 	}
 
 	quickAccessList := tview.NewList()
@@ -112,7 +129,7 @@ func (e *Editor) showFileDialogWithSaveCallback(mode fileDialogMode, afterSave f
 	if mode != fileDialogOpen {
 		options := make([]string, len(formats))
 		for i, format := range formats {
-			options[i] = format.extension + "  " + format.description
+			options[i] = fmt.Sprintf("%s - %s", format.extension, format.description)
 		}
 		formatDropdown = tview.NewDropDown().
 			SetLabel("Format: ").
@@ -132,7 +149,7 @@ func (e *Editor) showFileDialogWithSaveCallback(mode fileDialogMode, afterSave f
 	updateList = func(path string) {
 		fileList.Clear()
 		currentPath = path
-		pathLabel.SetText(fmt.Sprintf("[#f0d090]Location:[-]  %s", utils.PrettyPath(path, "no")))
+		pathLabel.SetText(fmt.Sprintf("[#f0d090]Location:[::-] %s", utils.PrettyPath(path, "no")))
 
 		if path != filepath.Dir(path) {
 			parent := filepath.Dir(path)
@@ -182,9 +199,12 @@ func (e *Editor) showFileDialogWithSaveCallback(mode fileDialogMode, afterSave f
 
 	populateQuickAccess := func() {
 		quickAccessList.Clear()
-		quickAccessList.AddItem("Home", homeDir, 'h', func() { updateList(homeDir) })
+		addQuickAccess := func(name, path string, shortcut rune) {
+			quickAccessList.AddItem(name, path, shortcut, func() { updateList(path) })
+		}
+		addQuickAccess("Home", homeDir, 'h')
 		if _, err := os.Stat(docsPath); err == nil {
-			quickAccessList.AddItem("Documents", docsPath, 'd', func() { updateList(docsPath) })
+			addQuickAccess("Documents", docsPath, 'd')
 		}
 		for _, item := range []struct {
 			name string
@@ -194,8 +214,36 @@ func (e *Editor) showFileDialogWithSaveCallback(mode fileDialogMode, afterSave f
 			{"↓ Downloads", filepath.Join(homeDir, "Downloads")},
 		} {
 			if _, err := os.Stat(item.path); err == nil {
-				item := item
-				quickAccessList.AddItem(item.name, item.path, 0, func() { updateList(item.path) })
+				addQuickAccess(item.name, item.path, 0)
+			}
+		}
+		if cwd, err := os.Getwd(); err == nil {
+			addQuickAccess("Current Dir", cwd, 'c')
+		}
+		if filepath.Separator == '\\' {
+			for drive := 'A'; drive <= 'Z'; drive++ {
+				driveName := string(drive) + ":"
+				drivePath := driveName + "\\"
+				if _, err := os.Stat(drivePath); err == nil {
+					addQuickAccess("Drive "+driveName, drivePath, 0)
+				}
+			}
+		} else {
+			addQuickAccess("Root (/)", "/", 0)
+			for _, mount := range []string{"/mnt", "/media", "/Volumes"} {
+				entries, err := os.ReadDir(mount)
+				if err != nil || len(entries) == 0 {
+					continue
+				}
+				mount := mount
+				addQuickAccess(filepath.Base(mount), mount, 0)
+				for _, entry := range entries {
+					if entry.IsDir() {
+						path := filepath.Join(mount, entry.Name())
+						label := entry.Name()
+						addQuickAccess(label, path, 0)
+					}
+				}
 			}
 		}
 	}
@@ -323,15 +371,9 @@ func (e *Editor) showFileDialogWithSaveCallback(mode fileDialogMode, afterSave f
 			writeToPath(filename, true)
 		})
 	}
-	form.AddButton("Cancel", func() { e.App.SetRoot(e.Root, true).SetFocus(e.View) })
-	if mode != fileDialogOpen {
-		form.AddButton("Exit", func() { e.confirmQuit() })
-	}
-	if mode == fileDialogOpen {
-		uitheme.StyleForm(form, "Open file")
-	} else {
-		uitheme.StyleForm(form, "Options")
-	}
+	form.AddButton("Cancel", func() { e.App.SetRoot(returnTo, true).SetFocus(returnFocus) })
+	form.AddButton("Exit", func() { e.confirmQuit() })
+	uitheme.StyleForm(form, "File")
 
 	leftSection := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(form, 0, 1, true).
@@ -362,7 +404,7 @@ func (e *Editor) showFileDialogWithSaveCallback(mode fileDialogMode, afterSave f
 	currentFocus := 2
 	container.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() == tcell.KeyEscape {
-			e.App.SetRoot(e.Root, true).SetFocus(e.View)
+			e.App.SetRoot(returnTo, true).SetFocus(returnFocus)
 			return nil
 		}
 		if event.Modifiers()&tcell.ModAlt != 0 && event.Modifiers()&tcell.ModShift != 0 {

@@ -54,7 +54,17 @@ const (
 	StartQuit
 )
 
-func StartMenuUI(app *tview.Application) StartMenuResult {
+type StartMenu struct {
+	View     tview.Primitive
+	Focus    tview.Primitive
+	onChoose func(StartMenuResult)
+}
+
+func (m *StartMenu) SetChooseHandler(handler func(StartMenuResult)) {
+	m.onChoose = handler
+}
+
+func StartMenuUI(app *tview.Application) (StartMenuResult, *StartMenu) {
 	result := StartQuit
 
 	container := tview.NewFlex()
@@ -137,9 +147,14 @@ func StartMenuUI(app *tview.Application) StartMenuResult {
 	currentLeft := 0
 	inLeft := true
 
+	var startMenu *StartMenu
 	choose := func(r StartMenuResult) {
 		result = r
-		app.Stop()
+		if startMenu != nil && startMenu.onChoose != nil {
+			startMenu.onChoose(r)
+		} else {
+			app.Stop()
+		}
 	}
 
 	newBtn.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
@@ -216,9 +231,10 @@ func StartMenuUI(app *tview.Application) StartMenuResult {
 		}
 	}
 
+	startMenu = &StartMenu{View: container, Focus: newBtn}
 	app.SetRoot(container, true).SetFocus(newBtn)
 	if err := app.Run(); err != nil {
-		return StartQuit
+		return StartQuit, startMenu
 	}
-	return result
+	return result, startMenu
 }

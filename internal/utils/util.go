@@ -13,16 +13,32 @@ import (
 
 const VER = "0.2.0"
 
-// PrettyPath shortens a path for display (home → ~).
+// PrettyPath shortens paths under the home directory and separates components for display.
 func PrettyPath(p, context string) string {
+	full := filepath.ToSlash(filepath.Clean(p))
 	home, err := os.UserHomeDir()
-	if err != nil {
-		return p
+	if err == nil {
+		home = filepath.ToSlash(filepath.Clean(home))
+		switch {
+		case full == home:
+			full = "~"
+		case strings.HasPrefix(full, home+"/"):
+			full = strings.TrimPrefix(full, home+"/")
+		}
 	}
-	if strings.HasPrefix(p, home) {
-		return "~" + p[len(home):]
+
+	if full == "~" || full == "/" || full == "." {
+		return full
 	}
-	return p
+	full = strings.TrimPrefix(full, "/")
+	if full == "" {
+		return "/"
+	}
+	parts := strings.Split(full, "/")
+	if context == "recentfiles" && len(parts) > 1 {
+		parts = parts[:len(parts)-1]
+	}
+	return strings.Join(parts, " > ")
 }
 
 // ConfigDir returns ~/.gowrite (creates it if needed).

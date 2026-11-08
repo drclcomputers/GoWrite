@@ -12,6 +12,8 @@ import (
 	"strings"
 
 	"gowrite/internal/services/fileop"
+
+	"github.com/rivo/tview"
 )
 
 func (e *Editor) saveDocument() {
@@ -133,8 +135,8 @@ func (e *Editor) loadFromFile(filename string) error {
 	return nil
 }
 
-func (e *Editor) OpenDocument() {
-	e.showFileDialog(fileDialogOpen)
+func (e *Editor) OpenDocument(returnTo, returnFocus tview.Primitive) {
+	e.showFileDialogWithReturn(fileDialogOpen, nil, returnTo, returnFocus)
 }
 
 func (e *Editor) openDocument() {

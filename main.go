@@ -57,6 +57,7 @@ func main() {
 
 	var doc *document.Document
 	startChoice := ui.StartNew
+	var startMenu *ui.StartMenu
 
 	if filename != "" {
 		data, err := os.ReadFile(filename)
@@ -71,7 +72,7 @@ func main() {
 		doc.SetFilename(filename)
 		doc.SetTitle(filepath.Base(filename))
 	} else {
-		startChoice = ui.StartMenuUI(app)
+		startChoice, startMenu = ui.StartMenuUI(app)
 		switch startChoice {
 		case ui.StartQuit:
 			return
@@ -91,8 +92,21 @@ func main() {
 	editor := ui.NewEditor(app, doc)
 	editor.Mount()
 
+	if startMenu != nil {
+		startMenu.SetChooseHandler(func(choice ui.StartMenuResult) {
+			switch choice {
+			case ui.StartNew:
+				app.SetRoot(editor.Root, true).SetFocus(editor.View)
+			case ui.StartOpen:
+				editor.OpenDocument(startMenu.View, startMenu.Focus)
+			case ui.StartQuit:
+				app.Stop()
+			}
+		})
+	}
+
 	if startChoice == ui.StartOpen {
-		editor.OpenDocument()
+		editor.OpenDocument(startMenu.View, startMenu.Focus)
 	}
 
 	if err := app.Run(); err != nil {
