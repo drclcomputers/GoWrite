@@ -13,6 +13,7 @@ import (
 	"gowrite/internal/services/document"
 	"gowrite/internal/services/ui/editor"
 	"gowrite/internal/services/ui/startmenu"
+	"gowrite/internal/utils"
 	"log"
 	"os"
 	"path/filepath"
@@ -90,7 +91,11 @@ func main() {
 		return
 	}
 
-	editorUI := editor.NewEditor(app, doc)
+	settings, settingsErr := utils.LoadSettings()
+	if settingsErr != nil {
+		fmt.Fprintf(os.Stderr, "Could not load saved options; using defaults: %v\n", settingsErr)
+	}
+	editorUI := editor.NewEditor(app, doc, settings)
 	editorUI.Mount()
 
 	if startMenu != nil {
@@ -98,6 +103,7 @@ func main() {
 			switch choice {
 			case startmenu.StartNew:
 				app.SetRoot(editorUI.Root, true).SetFocus(editorUI.View)
+				editorUI.NewDocument()
 			case startmenu.StartOpen:
 				editorUI.OpenDocument(startMenu.View, startMenu.Focus)
 			case startmenu.StartQuit:

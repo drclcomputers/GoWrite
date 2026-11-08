@@ -6,8 +6,10 @@
 package editor
 
 import (
+	"fmt"
 	"gowrite/internal/services/document"
 	"gowrite/internal/services/uitheme"
+	"gowrite/internal/utils"
 	"path/filepath"
 	"strings"
 
@@ -62,6 +64,10 @@ func (e *Editor) saveForExit() {
 }
 
 func (e *Editor) newDocument() {
+	settings, settingsErr := utils.LoadSettings()
+	if settingsErr != nil {
+		settings = utils.DefaultSettings()
+	}
 	if e.Doc.IsDirty() {
 		modal := tview.NewModal().
 			SetText("Current document has unsaved changes.\nDiscard and create a new one?").
@@ -69,7 +75,14 @@ func (e *Editor) newDocument() {
 			SetDoneFunc(func(buttonIndex int, buttonLabel string) {
 				if buttonLabel == "Discard" {
 					e.Doc = document.New()
+					applyDocumentDefaults(e.Doc, settings)
+					e.showFormattingMarks = settings.ShowFormattingMarks
+					e.defaultFormattingMarks = settings.ShowFormattingMarks
 					e.redraw()
+					if settingsErr != nil {
+						ShowErrorModal(e.App, e.Root, fmt.Sprintf("Could not load saved options; defaults are being used: %v", settingsErr))
+						return
+					}
 				}
 				e.App.SetRoot(e.Root, true).SetFocus(e.View)
 			})
@@ -78,7 +91,17 @@ func (e *Editor) newDocument() {
 		return
 	}
 	e.Doc = document.New()
+	applyDocumentDefaults(e.Doc, settings)
+	e.showFormattingMarks = settings.ShowFormattingMarks
+	e.defaultFormattingMarks = settings.ShowFormattingMarks
 	e.redraw()
+	if settingsErr != nil {
+		ShowErrorModal(e.App, e.Root, fmt.Sprintf("Could not load saved options; defaults are being used: %v", settingsErr))
+	}
+}
+
+func (e *Editor) NewDocument() {
+	e.newDocument()
 }
 
 func centredModal(p tview.Primitive, width, height int) tview.Primitive {

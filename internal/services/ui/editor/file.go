@@ -106,7 +106,7 @@ func (e *Editor) loadFromFile(filename string) error {
 		if state.Title == "" {
 			e.Doc.SetTitle(strings.TrimSuffix(filepath.Base(filename), filepath.Ext(filename)))
 		}
-		e.showFormattingMarks = false
+		e.showFormattingMarks = e.defaultFormattingMarks
 	case ".txt", ".md":
 		text, err := fileui.ReadText(filename)
 		if err != nil {
@@ -114,7 +114,7 @@ func (e *Editor) loadFromFile(filename string) error {
 		}
 		e.Doc.LoadText(text)
 		e.Doc.SetTitle(strings.TrimSuffix(filepath.Base(filename), filepath.Ext(filename)))
-		e.showFormattingMarks = false
+		e.showFormattingMarks = e.defaultFormattingMarks
 	default:
 		return fmt.Errorf("unsupported file format %q", filepath.Ext(filename))
 	}

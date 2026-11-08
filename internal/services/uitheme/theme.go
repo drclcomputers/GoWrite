@@ -43,7 +43,7 @@ func Paint(b boxed, title string) {
 	b.SetTitleAlign(tview.AlignCenter)
 	b.SetTitleColor(Amber)
 	b.SetBorderColor(Line)
-	b.SetBackgroundColor(Panel)
+	//b.SetBackgroundColor(Panel)
 }
 
 // StyleForm paints a form and its fields and buttons.

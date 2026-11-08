@@ -87,6 +87,14 @@ func (e *Editor) showFileDialogWithReturn(mode fileDialogMode, afterSave func(),
 	}
 
 	selectedFormat := 0
+	if mode == fileDialogSave {
+		settings, err := utils.LoadSettings()
+		if err != nil {
+			ShowErrorModal(e.App, returnTo, fmt.Sprintf("Could not load saved options: %v", err))
+			return
+		}
+		selectedFormat = fileui.FormatIndex(settings.DefaultSaveFormat, fileui.DocumentFormats())
+	}
 	baseName := e.Doc.GetTitle()
 	if currentFilename != "" {
 		baseName = strings.TrimSuffix(filepath.Base(currentFilename), filepath.Ext(currentFilename))

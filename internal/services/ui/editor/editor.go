@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"gowrite/internal/services/document"
 	"gowrite/internal/services/uitheme"
+	"gowrite/internal/utils"
 	"path/filepath"
 
 	"github.com/gdamore/tcell/v2"
@@ -23,13 +24,20 @@ type Editor struct {
 	View   *tview.TextView
 	Status *tview.TextView
 
-	lastW, lastH        int
-	flashSeq            int
-	showFormattingMarks bool
+	lastW, lastH           int
+	flashSeq               int
+	showFormattingMarks    bool
+	defaultFormattingMarks bool
 }
 
-func NewEditor(app *tview.Application, doc *document.Document) *Editor {
-	e := &Editor{App: app, Doc: doc}
+func NewEditor(app *tview.Application, doc *document.Document, settings utils.Settings) *Editor {
+	applyDocumentDefaults(doc, settings)
+	e := &Editor{
+		App:                    app,
+		Doc:                    doc,
+		showFormattingMarks:    settings.ShowFormattingMarks,
+		defaultFormattingMarks: settings.ShowFormattingMarks,
+	}
 
 	// Top Bar
 	e.TopBar = tview.NewTextView().
@@ -81,6 +89,18 @@ func NewEditor(app *tview.Application, doc *document.Document) *Editor {
 
 	e.redraw()
 	return e
+}
+
+func applyDocumentDefaults(doc *document.Document, settings utils.Settings) {
+	page := document.DefaultA4Portrait()
+	page.Size = document.PageSize(settings.DefaultPageSize)
+	page.Orientation = document.Orientation(settings.DefaultOrientation)
+	page.Width, page.Height = document.GetDimensions(page.Size, page.Orientation)
+	page.MarginLeft = settings.MarginLeft
+	page.MarginRight = settings.MarginRight
+	page.MarginTop = settings.MarginTop
+	page.MarginBottom = settings.MarginBottom
+	doc.Page = page.Normalized()
 }
 
 func (e *Editor) redraw() {

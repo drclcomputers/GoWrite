@@ -34,14 +34,14 @@ const openDocButtonLabel = `
 OPEN
 `
 
-const quitButtonLabel = `
-┌────────────┐
-│ ┌──────┐   │
-│ │    ● │ → │
-│ │      │   │
-│ └──────┘   │
-└────────────┘
-QUIT
+const optionsButtonLabel = `
+┌─────────────┐
+│ ──●──────── │
+│ ────────●── │
+│ ───●─────── │
+│ ────────●── │
+└─────────────┘
+OPTIONS
 `
 
 // StartMenuResult is what the start menu returns.
@@ -97,26 +97,33 @@ func StartMenuUI(app *tview.Application) (StartMenuResult, *StartMenu) {
 		SetBackgroundColor(tcell.NewRGBColor(14, 22, 32))
 	openBtn.SetScrollable(false)
 
-	quitBtn := tview.NewTextView().
-		SetText(quitButtonLabel).
+	optionsBtn := tview.NewTextView().
+		SetText(optionsButtonLabel).
 		SetTextAlign(tview.AlignCenter).
-		SetTextColor(uitheme.Warn)
-	quitBtn.SetBorder(true).
-		SetBorderColor(uitheme.Warn).
-		SetBackgroundColor(tcell.NewRGBColor(28, 20, 18))
-	quitBtn.SetScrollable(false)
+		SetTextColor(uitheme.Amber)
+	optionsBtn.SetBorder(true).
+		SetBorderColor(tcell.NewRGBColor(160, 130, 70)).
+		SetBackgroundColor(tcell.NewRGBColor(28, 24, 16))
+	optionsBtn.SetScrollable(false)
+	optionsBtn.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Key() == tcell.KeyEnter {
+			ShowOptions(app, container, optionsBtn)
+			return nil
+		}
+		return event
+	})
 
 	leftPanel.
 		AddItem(title, 0, 1, false).
-		AddItem(newBtn, 0, 3, true).
+		AddItem(newBtn, 0, 4, true).
 		AddItem(openBtn, 0, 3, true).
-		AddItem(quitBtn, 0, 3, true)
+		AddItem(optionsBtn, 0, 3, true)
 
 	// Right side – placeholder for recent files later
 	rightPanel := tview.NewFlex().SetDirection(tview.FlexRow)
 
 	recentTitle := tview.NewTextView().
-		SetText("[::b]Recent Documents[::-]").
+		SetText("[::b]Recent Files[::-]").
 		SetTextAlign(tview.AlignCenter).
 		SetDynamicColors(true)
 	recentTitle.SetBorder(true).
@@ -125,7 +132,7 @@ func StartMenuUI(app *tview.Application) (StartMenuResult, *StartMenu) {
 
 	recentList := tview.NewList()
 	uitheme.StyleList(recentList, "")
-	recentList.AddItem("No recent documents yet", "They will appear here after you save files", 0, nil)
+	recentList.AddItem("No recent files", "", 0, nil)
 	recentList.SetSelectedTextColor(tcell.ColorWhite)
 
 	rightPanel.
@@ -137,12 +144,12 @@ func StartMenuUI(app *tview.Application) (StartMenuResult, *StartMenu) {
 		AddItem(rightPanel, 0, 3, false)
 
 	container.SetBorder(true).
-		SetTitle(" GoWrite  ·  arrows or tab to move  ·  Enter to choose  ·  Esc quits ").
+		SetTitle(" GoWrite  ·  arrows or tab to move  ·  Enter to choose  ·  Esc/Q quits ").
 		SetTitleColor(uitheme.Amber).
 		SetBorderColor(uitheme.Line).
 		SetBackgroundColor(tcell.NewRGBColor(10, 12, 18))
 
-	leftItems := []tview.Primitive{newBtn, openBtn, quitBtn}
+	leftItems := []tview.Primitive{newBtn, openBtn, optionsBtn}
 	currentLeft := 0
 	inLeft := true
 
@@ -168,13 +175,6 @@ func StartMenuUI(app *tview.Application) (StartMenuResult, *StartMenu) {
 		}
 		return event
 	})
-	quitBtn.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		if event.Key() == tcell.KeyEnter {
-			choose(StartQuit)
-		}
-		return event
-	})
-
 	container.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		switch {
 		case event.Key() == tcell.KeyEscape || event.Rune() == 'q' || event.Rune() == 'Q':

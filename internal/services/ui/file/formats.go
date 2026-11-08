@@ -32,6 +32,15 @@ func Extension(formats []FormatOption, index int) string {
 	return formats[index].Extension
 }
 
+func FormatIndex(extension string, formats []FormatOption) int {
+	for i, format := range formats {
+		if strings.EqualFold(format.Extension, extension) {
+			return i
+		}
+	}
+	return 0
+}
+
 func WithExtension(filename, extension string, formats []FormatOption) string {
 	filename = strings.TrimSpace(filename)
 	ext := filepath.Ext(filename)
