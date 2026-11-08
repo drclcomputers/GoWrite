@@ -265,8 +265,43 @@ func (d *Document) InsertPageBreak() {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.ensureCursor()
+
+	para := d.Paragraphs[d.CursorPara]
+	paraLen := len([]rune(plainOf(para)))
+	if d.CursorOff == 0 && para.PageBreak {
+		return
+	}
+	if d.CursorOff == paraLen && d.CursorPara+1 < len(d.Paragraphs) &&
+		d.Paragraphs[d.CursorPara+1].PageBreak {
+		return
+	}
+
 	d.pushHistory()
-	d.Paragraphs[d.CursorPara].PageBreak = true
+	switch {
+	case d.CursorOff == 0:
+		d.Paragraphs[d.CursorPara].PageBreak = true
+	case d.CursorOff == paraLen && d.CursorPara+1 < len(d.Paragraphs):
+		d.CursorPara++
+		d.CursorOff = 0
+		d.Paragraphs[d.CursorPara].PageBreak = true
+	case d.CursorOff == paraLen:
+		next := Paragraph{
+			Runs:      []Run{{Text: "", Style: StyleNone}},
+			Align:     para.Align,
+			PageBreak: true,
+		}
+		d.Paragraphs = append(d.Paragraphs, next)
+		d.CursorPara++
+		d.CursorOff = 0
+	default:
+		left, right := d.splitParaAtCursor()
+		right.PageBreak = true
+		d.Paragraphs[d.CursorPara] = left
+		d.Paragraphs = append(d.Paragraphs[:d.CursorPara+1],
+			append([]Paragraph{right}, d.Paragraphs[d.CursorPara+1:]...)...)
+		d.CursorPara++
+		d.CursorOff = 0
+	}
 	d.Dirty = true
 }
 
@@ -497,4 +532,3 @@ func nextListMarker(marker string) string {
 	}
 	return marker + " "
 }
-

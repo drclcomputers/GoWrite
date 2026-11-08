@@ -84,6 +84,7 @@ func (e *Editor) showFormatDialog() {
 		SetTitleColor(uitheme.Amber).
 		SetBorderColor(uitheme.Line).
 		SetBackgroundColor(uitheme.Panel)
+	colorBox := panelInBox(colorPanel)
 
 	listPanel := buttonPanel(e.App, "Lists", []struct {
 		label string
@@ -124,7 +125,7 @@ func (e *Editor) showFormatDialog() {
 			})
 			e.closeFormatAndRedraw()
 		}},
-	}).SetBackgroundColor(uitheme.Panel)
+	})
 
 	insertPanel := buttonPanel(e.App, "Insert", []struct {
 		label string
@@ -137,6 +138,7 @@ func (e *Editor) showFormatDialog() {
 			e.closeFormatAndRedraw()
 		}},
 	})
+	insertBox := panelInBox(insertPanel)
 
 	xformPanel := buttonPanel(e.App, "Case & Transform", []struct {
 		label string
@@ -171,19 +173,19 @@ func (e *Editor) showFormatDialog() {
 			e.closeFormatAndRedraw()
 		}},
 	})
+	xformBox := panelInBox(xformPanel)
 
 	// ── Layout ──────────────────────────────────────────────────────────────
 	leftCol := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(styleForm, 0, 3, true).
 		AddItem(alignForm, 0, 1, false).
-		AddItem(colorPanel, 7, 0, false)
+		AddItem(colorBox, 7, 0, false)
 
-	midCol := tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(listPanel, 0, 1, false)
+	midCol := panelInBox(listPanel)
 
 	rightCol := tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(insertPanel, 0, 1, false).
-		AddItem(xformPanel, 0, 2, false)
+		AddItem(insertBox, 0, 1, false).
+		AddItem(xformBox, 0, 2, false)
 
 	columns := tview.NewFlex().
 		AddItem(leftCol, 0, 1, true).
@@ -256,6 +258,12 @@ func markFormatSection(sections []tview.Primitive, active int) {
 			v.SetBorderColor(col)
 		}
 	}
+}
+
+func panelInBox(panel tview.Primitive) *tview.Pages {
+	return tview.NewPages().
+		AddPage("background", tview.NewBox().SetBackgroundColor(uitheme.Panel), true, true).
+		AddPage("panel", panel, true, true)
 }
 
 // makePanelButton creates a themed button used inside format panels.

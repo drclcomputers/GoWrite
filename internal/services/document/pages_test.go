@@ -130,6 +130,68 @@ func TestPageInfo(t *testing.T) {
 	}
 }
 
+func TestInsertPageBreakAtCursor(t *testing.T) {
+	tests := []struct {
+		name       string
+		text       string
+		para, off  int
+		want       []string
+		wantCursor int
+	}{
+		{
+			name:       "inside paragraph",
+			text:       "beforeafter",
+			off:        6,
+			want:       []string{"before", "after"},
+			wantCursor: 1,
+		},
+		{
+			name:       "at paragraph end",
+			text:       "before\nafter",
+			off:        6,
+			want:       []string{"before", "after"},
+			wantCursor: 1,
+		},
+		{
+			name:       "at document end",
+			text:       "before",
+			off:        6,
+			want:       []string{"before", ""},
+			wantCursor: 1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			d := New()
+			d.LoadText(tt.text)
+			d.Page = testPage()
+			d.CursorPara, d.CursorOff = tt.para, tt.off
+
+			d.InsertPageBreak()
+
+			if len(d.Paragraphs) != len(tt.want) {
+				t.Fatalf("paragraph count = %d, want %d", len(d.Paragraphs), len(tt.want))
+			}
+			for i, want := range tt.want {
+				if got := plainOf(d.Paragraphs[i]); got != want {
+					t.Errorf("paragraph %d = %q, want %q", i, got, want)
+				}
+				if d.Paragraphs[i].PageBreak != (i == tt.wantCursor) {
+					t.Errorf("paragraph %d PageBreak = %v, want %v", i,
+						d.Paragraphs[i].PageBreak, i == tt.wantCursor)
+				}
+			}
+			if d.CursorPara != tt.wantCursor || d.CursorOff != 0 {
+				t.Errorf("cursor = (%d,%d), want (%d,0)", d.CursorPara, d.CursorOff, tt.wantCursor)
+			}
+			if cur, total := d.PageInfo(); cur != 2 || total != 2 {
+				t.Errorf("PageInfo = %d/%d, want 2/2", cur, total)
+			}
+		})
+	}
+}
+
 func TestComposeRow(t *testing.T) {
 	cases := []struct {
 		l, c, r string
