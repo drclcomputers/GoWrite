@@ -246,7 +246,7 @@ func (e *Editor) showFormatDialog() {
 	hint := tview.NewTextView().
 		SetDynamicColors(true).
 		SetTextAlign(tview.AlignCenter).
-		SetText(" [#f0d090]Tab[-] next   [#f0d090]Alt+←/→[-] section   [#f0d090]Esc[-] close")
+		SetText(" [#f0d090]Tab[-] next   [#f0d090]Alt+Shift+←/→[-] section   [#f0d090]Esc[-] close")
 	hint.SetBackgroundColor(uitheme.Ink)
 
 	root := tview.NewFlex().SetDirection(tview.FlexRow).

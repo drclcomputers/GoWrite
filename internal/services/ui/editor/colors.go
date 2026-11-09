@@ -16,6 +16,27 @@ import (
 )
 
 func (e *Editor) showColorPicker(background bool) {
+	fg, bg := e.Doc.ActiveColors()
+	current := fg
+	if background {
+		current = bg
+	}
+	e.showColorPickerWith(background, current, func(color string) {
+		if !e.Doc.SetSelectionColor(background, color) {
+			if background {
+				e.Doc.SetActiveBg(color)
+			} else {
+				e.Doc.SetActiveFg(color)
+			}
+		}
+		e.App.SetRoot(e.Root, true).SetFocus(e.View)
+		e.redraw()
+	}, func() {
+		e.App.SetRoot(e.Root, true).SetFocus(e.View)
+	})
+}
+
+func (e *Editor) showColorPickerWith(background bool, current string, selectColor func(string), cancel func()) {
 	title := "Text Colour"
 	if background {
 		title = "Background Colour"
@@ -24,12 +45,6 @@ func (e *Editor) showColorPicker(background bool) {
 	pages := tview.NewPages()
 	palette := document.ColorPalette
 	const cols = 5
-
-	fg, bg := e.Doc.ActiveColors()
-	current := fg
-	if background {
-		current = bg
-	}
 
 	// --- PAGE 1: GRID PALETTE ---
 	table := tview.NewTable().
@@ -214,17 +229,14 @@ func (e *Editor) showColorPicker(background bool) {
 		AddFormItem(blueInput).
 		AddFormItem(hexInput)
 
+	var pickerModal tview.Primitive
 	applyCustom := func() {
-		hex := hexInput.GetText()
-		if !e.Doc.SetSelectionColor(background, hex) {
-			if background {
-				e.Doc.SetActiveBg(hex)
-			} else {
-				e.Doc.SetActiveFg(hex)
-			}
+		color := hexInput.GetText()
+		if !validHexColor(color) {
+			ShowErrorModal(e.App, pickerModal, "Enter a valid hex color such as #AABBCC.")
+			return
 		}
-		e.App.SetRoot(e.Root, true).SetFocus(e.View)
-		e.redraw()
+		selectColor(color)
 	}
 
 	customForm.AddButton("Apply", applyCustom)
@@ -252,21 +264,13 @@ func (e *Editor) showColorPicker(background bool) {
 		idx := row*cols + col
 		if idx >= 0 && idx < len(palette) {
 			c := palette[idx]
-			if !e.Doc.SetSelectionColor(background, c.Value) {
-				if background {
-					e.Doc.SetActiveBg(c.Value)
-				} else {
-					e.Doc.SetActiveFg(c.Value)
-				}
-			}
-			e.App.SetRoot(e.Root, true).SetFocus(e.View)
-			e.redraw()
+			selectColor(c.Value)
 		}
 	}
 	table.SetSelectedFunc(func(row, col int) { applyGrid() })
 	table.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() == tcell.KeyEscape {
-			e.App.SetRoot(e.Root, true).SetFocus(e.View)
+			cancel()
 			return nil
 		}
 		return event
@@ -290,8 +294,16 @@ func (e *Editor) showColorPicker(background bool) {
 		SetTitleColor(uitheme.Amber).
 		SetTitleAlign(tview.AlignCenter)
 
-	modal := centredModal(container, 62, 12)
-	e.App.SetRoot(modal, true).SetFocus(table)
+	pickerModal = centredModal(container, 62, 12)
+	e.App.SetRoot(pickerModal, true).SetFocus(table)
+}
+
+func validHexColor(value string) bool {
+	if len(value) != 7 || value[0] != '#' {
+		return false
+	}
+	_, err := strconv.ParseUint(value[1:], 16, 24)
+	return err == nil
 }
 
 func parseHexColor(s string) tcell.Color {

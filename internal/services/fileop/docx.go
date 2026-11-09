@@ -164,6 +164,13 @@ func docxDocumentXML(state document.State, headerID, footerID string) string {
 	b.WriteString(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`)
 	b.WriteString(`<w:document xmlns:w="` + wordNS + `" xmlns:r="` + officeRel + `"><w:body>`)
 	for _, paragraph := range state.Paragraphs {
+		if paragraph.TablePart {
+			continue
+		}
+		if paragraph.Table != nil {
+			writeDOCXTable(&b, *paragraph.Table, page)
+			continue
+		}
 		writeDOCXParagraph(&b, paragraph)
 	}
 	fmt.Fprintf(&b, `<w:sectPr>`)
@@ -185,6 +192,49 @@ func docxDocumentXML(state document.State, headerID, footerID string) string {
 		mmToTwips(float64(page.MarginLeft)*210/100))
 	b.WriteString(`</w:sectPr></w:body></w:document>`)
 	return b.String()
+}
+
+func writeDOCXTable(b *strings.Builder, table document.Table, page document.PageSettings) {
+	page = page.Normalized()
+	widthMM, _ := rtfPageDimensions(page)
+	totalWidth := mmToTwips(widthMM) -
+		mmToTwips(float64(page.MarginLeft)*210/100) -
+		mmToTwips(float64(page.MarginRight)*210/100)
+	columns := len(table.Rows[0])
+	columnWidth := max(totalWidth/columns, 1)
+
+	b.WriteString(`<w:tbl><w:tblPr><w:tblBorders>`)
+	for _, edge := range []string{"top", "left", "bottom", "right", "insideH", "insideV"} {
+		fmt.Fprintf(b, `<w:%s w:val="single" w:sz="4" w:space="0" w:color="808080"/>`, edge)
+	}
+	b.WriteString(`</w:tblBorders></w:tblPr><w:tblGrid>`)
+	for range columns {
+		fmt.Fprintf(b, `<w:gridCol w:w="%d"/>`, columnWidth)
+	}
+	b.WriteString(`</w:tblGrid>`)
+	for ri, row := range table.Rows {
+		b.WriteString(`<w:tr>`)
+		for ci, cell := range row {
+			format := document.TableCellFormat{}
+			if ri < len(table.CellFormats) && ci < len(table.CellFormats[ri]) {
+				format = table.CellFormats[ri][ci]
+			}
+			fmt.Fprintf(b, `<w:tc><w:tcPr><w:tcW w:w="%d" w:type="dxa"/></w:tcPr>`, columnWidth)
+			writeDOCXParagraph(b, document.Paragraph{
+				Align:     format.Alignment,
+				ParaStyle: format.ParagraphStyle,
+				Runs: []document.Run{{
+					Text:  cell,
+					Style: format.Style,
+					Fg:    format.Foreground,
+					Bg:    format.Background,
+				}},
+			})
+			b.WriteString(`</w:tc>`)
+		}
+		b.WriteString(`</w:tr>`)
+	}
+	b.WriteString(`</w:tbl>`)
 }
 
 func writeDOCXParagraph(b *strings.Builder, paragraph document.Paragraph) {
@@ -486,6 +536,14 @@ func LoadDOCX(filename string) (document.State, error) {
 	return state, nil
 }
 
+func plainDOCXParagraph(paragraph document.Paragraph) string {
+	var text strings.Builder
+	for _, run := range paragraph.Runs {
+		text.WriteString(run.Text)
+	}
+	return text.String()
+}
+
 func readDOCXPart(parts map[string]*zip.File, name string) ([]byte, error) {
 	file := parts[name]
 	if file == nil {
@@ -530,7 +588,9 @@ func parseDOCXDocument(data []byte) (parsedDOCXDocument, error) {
 	orientation := document.Portrait
 	marginTop, marginRight, marginBottom, marginLeft := -1, -1, -1, -1
 	tableDepth := 0
-	var tableRow *document.Paragraph
+	var table document.Table
+	var tableRow []string
+	var tableRowFormats []document.TableCellFormat
 	var cellParagraphs []document.Paragraph
 	inTableCell := false
 
@@ -547,13 +607,17 @@ func parseDOCXDocument(data []byte) (parsedDOCXDocument, error) {
 			name := value.Name.Local
 			switch name {
 			case "tbl":
+				if tableDepth == 0 {
+					table = document.Table{}
+				}
 				tableDepth++
 			case "tr":
 				if tableDepth == 1 {
-					tableRow = &document.Paragraph{Align: document.AlignLeft}
+					tableRow = nil
+					tableRowFormats = nil
 				}
 			case "tc":
-				if tableDepth == 1 && tableRow != nil {
+				if tableDepth == 1 {
 					inTableCell = true
 					cellParagraphs = nil
 				}
@@ -688,7 +752,7 @@ func parseDOCXDocument(data []byte) (parsedDOCXDocument, error) {
 					if len(paragraph.Runs) == 0 {
 						paragraph.Runs = []document.Run{{Text: ""}}
 					}
-					if tableDepth == 1 && inTableCell && tableRow != nil {
+					if tableDepth > 0 && inTableCell {
 						cellParagraphs = append(cellParagraphs, *paragraph)
 					} else {
 						result.paragraphs = append(result.paragraphs, *paragraph)
@@ -697,35 +761,54 @@ func parseDOCXDocument(data []byte) (parsedDOCXDocument, error) {
 				paragraph = nil
 			case "tc":
 				if tableDepth == 1 {
-					if tableRow != nil {
-						for i, cellParagraph := range cellParagraphs {
-							if i > 0 {
-								tableRow.Runs = append(tableRow.Runs, document.Run{Text: "\n"})
-							} else {
-								tableRow.Align = cellParagraph.Align
-								tableRow.ParaStyle = cellParagraph.ParaStyle
-								tableRow.SpaceAfter = cellParagraph.SpaceAfter
-								tableRow.PageBreak = cellParagraph.PageBreak
-							}
-							tableRow.Runs = append(tableRow.Runs, cellParagraph.Runs...)
+					var cell strings.Builder
+					for i, paragraph := range cellParagraphs {
+						if i > 0 {
+							cell.WriteByte('\n')
 						}
-						tableRow.Runs = append(tableRow.Runs, document.Run{Text: "\t"})
+						cell.WriteString(plainDOCXParagraph(paragraph))
 					}
+					tableRow = append(tableRow, cell.String())
+					format := document.TableCellFormat{}
+					if len(cellParagraphs) > 0 {
+						first := cellParagraphs[0]
+						format.Alignment = first.Align
+						format.ParagraphStyle = first.ParaStyle
+						if len(first.Runs) > 0 {
+							format.Style = first.Runs[0].Style
+							format.Foreground = first.Runs[0].Fg
+							format.Background = first.Runs[0].Bg
+						}
+					}
+					tableRowFormats = append(tableRowFormats, format)
 					inTableCell = false
 					cellParagraphs = nil
 				}
 			case "tr":
-				if tableDepth == 1 && tableRow != nil {
-					if count := len(tableRow.Runs); count > 0 && tableRow.Runs[count-1].Text == "\t" {
-						tableRow.Runs = tableRow.Runs[:count-1]
-					}
-					if len(tableRow.Runs) == 0 {
-						tableRow.Runs = []document.Run{{Text: ""}}
-					}
-					result.paragraphs = append(result.paragraphs, *tableRow)
+				if tableDepth == 1 && len(tableRow) > 0 {
+					table.Rows = append(table.Rows, tableRow)
+					table.CellFormats = append(table.CellFormats, tableRowFormats)
 				}
-				tableRow = nil
 			case "tbl":
+				if tableDepth == 1 && len(table.Rows) > 0 {
+					columns := 0
+					for _, row := range table.Rows {
+						columns = max(columns, len(row))
+					}
+					for i := range table.Rows {
+						for len(table.Rows[i]) < columns {
+							table.Rows[i] = append(table.Rows[i], "")
+						}
+						for len(table.CellFormats[i]) < columns {
+							table.CellFormats[i] = append(table.CellFormats[i], document.TableCellFormat{})
+						}
+					}
+					tableCopy := table
+					result.paragraphs = append(result.paragraphs, document.Paragraph{
+						Runs:  []document.Run{{Text: ""}},
+						Table: &tableCopy,
+					})
+				}
 				tableDepth--
 			case "sectPr":
 				inSection = false

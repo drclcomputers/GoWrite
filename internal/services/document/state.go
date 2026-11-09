@@ -69,6 +69,11 @@ func (d *Document) Restore(state State) error {
 		if paragraph.SpaceAfter < 0 || paragraph.SpaceAfter > maxParagraphSpaceAfter {
 			return fmt.Errorf("paragraph %d has invalid spacing", pi+1)
 		}
+		if paragraph.Table != nil {
+			if err := validateTable(paragraph.Table); err != nil {
+				return fmt.Errorf("paragraph %d has invalid table: %w", pi+1, err)
+			}
+		}
 		for _, run := range paragraph.Runs {
 			if run.Style&^validStyles != 0 {
 				return fmt.Errorf("paragraph %d has invalid text style", pi+1)
@@ -92,6 +97,7 @@ func (d *Document) Restore(state State) error {
 	d.Page = state.Page.Normalized()
 	d.CursorPara = state.CursorPara
 	d.CursorOff = state.CursorOff
+	d.reflowTablesLocked()
 	d.ActiveStyle = state.ActiveStyle
 	d.ActiveFg = state.ActiveFg
 	d.ActiveBg = state.ActiveBg

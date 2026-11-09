@@ -15,6 +15,9 @@ func (d *Document) InsertRune(r rune) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.ensureCursor()
+	if d.inTableLocked() {
+		return
+	}
 	if r == '\n' {
 		d.pushHistory()
 	} else {
@@ -166,6 +169,9 @@ func (d *Document) Backspace() {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.ensureCursor()
+	if d.inTableLocked() {
+		return
+	}
 	hasSel := d.hasAnchor && (d.anchorPara != d.CursorPara || d.anchorOff != d.CursorOff)
 	if !hasSel && d.CursorPara == 0 && d.CursorOff == 0 {
 		return
@@ -213,6 +219,9 @@ func (d *Document) Delete() {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.ensureCursor()
+	if d.inTableLocked() {
+		return
+	}
 	hasSel := d.hasAnchor && (d.anchorPara != d.CursorPara || d.anchorOff != d.CursorOff)
 	plain := []rune(plainOf(d.Paragraphs[d.CursorPara]))
 	hasCharAfter := d.CursorOff < len(plain)
@@ -334,6 +343,9 @@ func (d *Document) InsertText(s string) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.ensureCursor()
+	if d.inTableLocked() {
+		return
+	}
 	d.pushHistory()
 	d.deleteSelectionLocked()
 	d.insertTextContentLocked(s)
@@ -389,6 +401,9 @@ func (d *Document) TransformSelection(fn func(string) string) bool {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.ensureCursor()
+	if d.inTableLocked() {
+		return false
+	}
 
 	var text string
 	if _, _, _, _, ok := d.selectionRange(); ok {

@@ -56,6 +56,22 @@ type Paragraph struct {
 	ParaStyle  ParagraphStyle `json:"style"`
 	SpaceAfter int            `json:"space_after"`
 	PageBreak  bool           `json:"page_break,omitempty"`
+	Table      *Table         `json:"table,omitempty"`
+	TablePart  bool           `json:"table_part,omitempty"`
+}
+
+// Table stores cell text independently from its terminal rendering.
+type Table struct {
+	Rows        [][]string          `json:"rows"`
+	CellFormats [][]TableCellFormat `json:"cell_formats,omitempty"`
+}
+
+type TableCellFormat struct {
+	Style          Style          `json:"style,omitempty"`
+	Foreground     string         `json:"foreground,omitempty"`
+	Background     string         `json:"background,omitempty"`
+	ParagraphStyle ParagraphStyle `json:"paragraph_style,omitempty"`
+	Alignment      Align          `json:"alignment,omitempty"`
 }
 
 type OutlineEntry struct {
@@ -127,6 +143,7 @@ func (d *Document) SetPageSettings(p PageSettings) {
 	}
 	d.pushHistory()
 	d.Page = p
+	d.reflowTablesLocked()
 	d.Dirty = true
 }
 

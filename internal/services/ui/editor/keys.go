@@ -22,6 +22,27 @@ func (e *Editor) handleKeys(event *tcell.EventKey) *tcell.EventKey {
 		return nil
 	}
 
+	if _, inTable := e.Doc.TableParagraph(); inTable {
+		switch event.Key() {
+		case tcell.KeyEnter:
+			if e.Doc.MoveAfterTableAtCursor() {
+				e.redraw()
+				return nil
+			}
+			e.editTableAtCursor()
+			return nil
+		case tcell.KeyTab, tcell.KeyBackspace, tcell.KeyBackspace2, tcell.KeyDelete:
+			e.editTableAtCursor()
+			return nil
+		default:
+			if event.Rune() != 0 && unicode.IsPrint(event.Rune()) &&
+				event.Modifiers()&(tcell.ModAlt|tcell.ModCtrl) == 0 {
+				e.editTableAtCursor()
+				return nil
+			}
+		}
+	}
+
 	if event.Rune() == '?' || (event.Rune() == '/' && event.Modifiers()&tcell.ModAlt != 0) {
 		e.showHelp()
 		return nil

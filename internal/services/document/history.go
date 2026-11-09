@@ -52,7 +52,8 @@ func sameContent(a, b historyEntry) bool {
 	for i := range a.Paragraphs {
 		pa, pb := a.Paragraphs[i], b.Paragraphs[i]
 		if pa.Align != pb.Align || pa.ParaStyle != pb.ParaStyle ||
-			pa.SpaceAfter != pb.SpaceAfter || pa.PageBreak != pb.PageBreak ||
+			pa.SpaceAfter != pb.SpaceAfter || pa.PageBreak != pb.PageBreak || pa.TablePart != pb.TablePart ||
+			!sameTable(pa.Table, pb.Table) ||
 			!slices.Equal(pa.Runs, pb.Runs) {
 			return false
 		}

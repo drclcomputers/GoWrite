@@ -49,6 +49,9 @@ func cloneRuns(runs []Run) []Run {
 
 func cloneParagraph(p Paragraph) Paragraph {
 	p.Runs = cloneRuns(p.Runs)
+	if p.Table != nil {
+		p.Table = cloneTable(p.Table)
+	}
 	return p
 }
 

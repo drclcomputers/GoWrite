@@ -50,8 +50,15 @@ func encodeRTF(state document.State) string {
 	writeRTFHeaderFooter(&b, "footer", page.Footer, page.PageNumbers, page.PageNumbers.Where == document.NumFooter, state.Title, pageWidth)
 
 	for i, paragraph := range state.Paragraphs {
+		if paragraph.TablePart {
+			continue
+		}
 		if i > 0 && paragraph.PageBreak {
 			b.WriteString(`\page `)
+		}
+		if paragraph.Table != nil {
+			writeRTFTable(&b, *paragraph.Table, pageWidth, indices)
+			continue
 		}
 		b.WriteString(`\pard`)
 		switch paragraph.Align {
@@ -111,6 +118,71 @@ func encodeRTF(state document.State) string {
 	return b.String()
 }
 
+func writeRTFTable(b *strings.Builder, table document.Table, width int, indices map[string]int) {
+	columns := len(table.Rows[0])
+	cellWidth := max(width/columns, 1)
+	for ri, row := range table.Rows {
+		b.WriteString(`\trowd\trgaph108\trleft0`)
+		for col := 0; col < columns; col++ {
+			fmt.Fprintf(b, `\clbrdrt\brdrs\clbrdrl\brdrs\clbrdrb\brdrs\clbrdrr\brdrs\cellx%d`, cellWidth*(col+1))
+		}
+		b.WriteByte(' ')
+		for ci, cell := range row {
+			format := document.TableCellFormat{}
+			if ri < len(table.CellFormats) && ci < len(table.CellFormats[ri]) {
+				format = table.CellFormats[ri][ci]
+			}
+			b.WriteString(`\intbl\pard`)
+			switch format.Alignment {
+			case document.AlignCenter:
+				b.WriteString(`\qc`)
+			case document.AlignRight:
+				b.WriteString(`\qr`)
+			default:
+				b.WriteString(`\ql`)
+			}
+			switch format.ParagraphStyle {
+			case document.ParagraphTitle:
+				b.WriteString(`\keepn`)
+			case document.ParagraphHeading1:
+				b.WriteString(`\outlinelevel0\keepn`)
+			case document.ParagraphHeading2:
+				b.WriteString(`\outlinelevel1\keepn`)
+			case document.ParagraphHeading3:
+				b.WriteString(`\outlinelevel2\keepn`)
+			}
+			style, fg, bg, font := effectiveRTFRun(format.ParagraphStyle, document.Run{
+				Style: format.Style, Fg: format.Foreground, Bg: format.Background,
+			})
+			b.WriteString(`{\f`)
+			b.WriteString(strconv.Itoa(font))
+			if index := indices[fg]; index > 0 {
+				fmt.Fprintf(b, `\cf%d`, index)
+			}
+			if index := indices[bg]; index > 0 {
+				fmt.Fprintf(b, `\highlight%d`, index)
+			}
+			if style&document.StyleBold != 0 {
+				b.WriteString(`\b`)
+			}
+			if style&document.StyleItalic != 0 {
+				b.WriteString(`\i`)
+			}
+			if style&document.StyleUnderline != 0 {
+				b.WriteString(`\ul`)
+			}
+			if style&document.StyleStrike != 0 {
+				b.WriteString(`\strike`)
+			}
+			b.WriteByte(' ')
+			writeRTFText(b, cell)
+			b.WriteByte('}')
+			b.WriteString(`\cell `)
+		}
+		b.WriteString(`\row `)
+	}
+}
+
 func rtfPageDimensions(page document.PageSettings) (float64, float64) {
 	var width, height float64
 	switch page.Size {
@@ -159,6 +231,17 @@ func collectRTFColors(state document.State) ([][3]int, map[string]int) {
 			}
 			add(fg)
 			add(run.Bg)
+		}
+		if paragraph.Table != nil {
+			for _, row := range paragraph.Table.CellFormats {
+				for _, format := range row {
+					_, fg, bg, _ := effectiveRTFRun(format.ParagraphStyle, document.Run{
+						Style: format.Style, Fg: format.Foreground, Bg: format.Background,
+					})
+					add(fg)
+					add(bg)
+				}
+			}
 		}
 	}
 	return colors, indices

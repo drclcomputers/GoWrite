@@ -16,13 +16,28 @@ func plainOf(p Paragraph) string {
 	return b.String()
 }
 
+func tableText(table *Table) string {
+	rows := make([]string, len(table.Rows))
+	for i, row := range table.Rows {
+		rows[i] = strings.Join(row, "\t")
+	}
+	return strings.Join(rows, "\n")
+}
+
 // Text returns the full document as plain text (paragraphs joined by \n).
 func (d *Document) Text() string {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
-	parts := make([]string, len(d.Paragraphs))
-	for i, p := range d.Paragraphs {
-		parts[i] = plainOf(p)
+	parts := make([]string, 0, len(d.Paragraphs))
+	for _, p := range d.Paragraphs {
+		if p.TablePart {
+			continue
+		}
+		if p.Table != nil {
+			parts = append(parts, tableText(p.Table))
+		} else {
+			parts = append(parts, plainOf(p))
+		}
 	}
 	return strings.Join(parts, "\n")
 }
@@ -86,7 +101,15 @@ func (d *Document) WordCount() int {
 	defer d.mu.RUnlock()
 	count := 0
 	for _, p := range d.Paragraphs {
-		count += len(strings.Fields(plainOf(p)))
+		if p.Table != nil {
+			for _, row := range p.Table.Rows {
+				for _, cell := range row {
+					count += len(strings.Fields(cell))
+				}
+			}
+		} else if !p.TablePart {
+			count += len(strings.Fields(plainOf(p)))
+		}
 	}
 	return count
 }
@@ -96,7 +119,15 @@ func (d *Document) CharCount() int {
 	defer d.mu.RUnlock()
 	n := 0
 	for _, p := range d.Paragraphs {
-		n += len([]rune(plainOf(p)))
+		if p.Table != nil {
+			for _, row := range p.Table.Rows {
+				for _, cell := range row {
+					n += len([]rune(cell))
+				}
+			}
+		} else if !p.TablePart {
+			n += len([]rune(plainOf(p)))
+		}
 	}
 	return n
 }
@@ -104,5 +135,11 @@ func (d *Document) CharCount() int {
 func (d *Document) ParagraphCount() int {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
-	return len(d.Paragraphs)
+	count := 0
+	for _, paragraph := range d.Paragraphs {
+		if !paragraph.TablePart {
+			count++
+		}
+	}
+	return count
 }

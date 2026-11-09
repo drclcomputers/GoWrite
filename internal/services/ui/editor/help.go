@@ -43,6 +43,7 @@ func (e *Editor) showHelp() {
                    (lists auto-continue on Enter; empty item exits)
   View             Formatting marks and heading outline
   Insert           Date & Time · Symbols · Table · Page break
+                   Enter on a table edits a cell; at the table end it moves after it
   Page Setup       Page size, margins, header, footer, page numbers
 
 [#8ecae6::b]LESS OFTEN[-]  (Alt + the letter)

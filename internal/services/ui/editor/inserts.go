@@ -21,6 +21,17 @@ import (
 // ── Date & Time ─────────────────────────────────────────────────────────────
 
 func (e *Editor) showDateTimeDialog() {
+	e.showDateTimeDialogWith(
+		func(text string) {
+			e.Doc.InsertText(text)
+			e.App.SetRoot(e.Root, true).SetFocus(e.View)
+			e.redraw()
+		},
+		func() { e.showFormatDialog() },
+	)
+}
+
+func (e *Editor) showDateTimeDialogWith(insert func(string), cancel func()) {
 	list := tview.NewList().
 		ShowSecondaryText(true).
 		SetHighlightFullLine(true)
@@ -28,9 +39,7 @@ func (e *Editor) showDateTimeDialog() {
 	now := time.Now()
 	add := func(main, secondary, text string) {
 		list.AddItem(main, secondary, 0, func() {
-			e.Doc.InsertText(text)
-			e.App.SetRoot(e.Root, true).SetFocus(e.View)
-			e.redraw()
+			insert(text)
 		})
 	}
 
@@ -45,16 +54,14 @@ func (e *Editor) showDateTimeDialog() {
 	add(now.Format(time.RFC3339), "RFC3339", now.Format(time.RFC3339))
 	add(now.Format(time.RFC1123), "RFC1123", now.Format(time.RFC1123))
 
-	list.AddItem("Cancel", "Back without inserting", 'q', func() {
-		e.showFormatDialog()
-	})
+	list.AddItem("Cancel", "Back without inserting", 'q', cancel)
 
 	uitheme.StyleList(list, "Insert Date & Time")
 	list.SetBorder(true)
 
 	list.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() == tcell.KeyEscape {
-			e.showFormatDialog()
+			cancel()
 			return nil
 		}
 		return event
@@ -83,19 +90,23 @@ func (e *Editor) showInsertTableDialog() {
 	form.AddButton("Insert", func() {
 		rowCount, err := strconv.Atoi(strings.TrimSpace(rows.GetText()))
 		if err != nil {
-			ShowErrorModal(e.App, dialog, "Rows must be a number from 1 to 20")
+			ShowErrorModal(e.App, dialog, "Rows must be a positive whole number")
 			return
 		}
 		columnCount, err := strconv.Atoi(strings.TrimSpace(columns.GetText()))
 		if err != nil {
-			ShowErrorModal(e.App, dialog, "Columns must be a number from 1 to 10")
+			ShowErrorModal(e.App, dialog, "Columns must be a positive whole number")
 			return
 		}
 		if err := e.Doc.InsertTable(rowCount, columnCount); err != nil {
 			ShowErrorModal(e.App, dialog, err.Error())
 			return
 		}
-		e.closeFormatAndRedraw()
+		if paragraph, ok := e.Doc.TableParagraph(); ok {
+			e.showTableEditor(paragraph, true)
+		} else {
+			e.closeFormatAndRedraw()
+		}
 	})
 	form.AddButton("Cancel", func() { e.showFormatDialog() })
 	form.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
@@ -126,6 +137,17 @@ var symbolGrid = [][]string{
 }
 
 func (e *Editor) showSymbolGrid() {
+	e.showSymbolGridWith(
+		func(symbol string) {
+			e.Doc.InsertText(symbol)
+			e.App.SetRoot(e.Root, true).SetFocus(e.View)
+			e.redraw()
+		},
+		func() { e.showFormatDialog() },
+	)
+}
+
+func (e *Editor) showSymbolGridWith(insert func(string), cancel func()) {
 	rows := len(symbolGrid)
 	cols := len(symbolGrid[0])
 
@@ -176,9 +198,7 @@ func (e *Editor) showSymbolGrid() {
 	insertSelected := func() {
 		r, c := table.GetSelection()
 		if r >= 0 && r < rows && c >= 0 && c < cols {
-			e.Doc.InsertText(symbolGrid[r][c])
-			e.App.SetRoot(e.Root, true).SetFocus(e.View)
-			e.redraw()
+			insert(symbolGrid[r][c])
 		}
 	}
 
@@ -189,7 +209,7 @@ func (e *Editor) showSymbolGrid() {
 	table.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		switch event.Key() {
 		case tcell.KeyEscape:
-			e.showFormatDialog()
+			cancel()
 			return nil
 		case tcell.KeyEnter:
 			insertSelected()

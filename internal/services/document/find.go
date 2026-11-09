@@ -45,6 +45,9 @@ func (d *Document) Find(query string, caseSensitive, wholeWord, backwards bool) 
 	}
 
 	fold := func(pi int) []rune {
+		if d.Paragraphs[pi].Table != nil || d.Paragraphs[pi].TablePart {
+			return nil
+		}
 		rs := []rune(plainOf(d.Paragraphs[pi]))
 		if caseSensitive {
 			return rs
@@ -175,6 +178,9 @@ func (d *Document) ReplaceAll(old, new string, caseSensitive, wholeWord bool) in
 
 	count := 0
 	for pi := range d.Paragraphs {
+		if d.Paragraphs[pi].Table != nil || d.Paragraphs[pi].TablePart {
+			continue
+		}
 		rs := []rune(plainOf(d.Paragraphs[pi]))
 		hay := rs
 		if !caseSensitive {

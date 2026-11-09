@@ -104,6 +104,61 @@ func TestExportTXTAndRTF(t *testing.T) {
 	}
 }
 
+func TestTableExportsAsStructuredData(t *testing.T) {
+	doc := document.New()
+	if err := doc.InsertTable(2, 2); err != nil {
+		t.Fatal(err)
+	}
+	paragraph, _ := doc.TableParagraph()
+	table, _ := doc.TableAt(paragraph)
+	table.Rows[0] = []string{"left", "right"}
+	table.Rows[1] = []string{"second row", "last"}
+	table.EnsureCellFormats()
+	table.CellFormats[0][0] = document.TableCellFormat{
+		Style: document.StyleBold, Foreground: "#123456", Background: "#abcdef",
+		ParagraphStyle: document.ParagraphHeading1, Alignment: document.AlignCenter,
+	}
+	if err := doc.UpdateTableAt(paragraph, table); err != nil {
+		t.Fatal(err)
+	}
+	state := doc.Snapshot()
+	if got, want := doc.Text(), "left\tright\nsecond row\tlast"; got != want {
+		t.Fatalf("plain document text = %q, want %q", got, want)
+	}
+
+	txtPath := filepath.Join(t.TempDir(), "table.txt")
+	if err := ExportTXT(txtPath, state); err != nil {
+		t.Fatal(err)
+	}
+	text, err := os.ReadFile(txtPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := string(text), "left\tright\nsecond row\tlast"; got != want {
+		t.Fatalf("TXT table = %q, want %q", got, want)
+	}
+	rtf := encodeRTF(state)
+	if !strings.Contains(rtf, `\trowd`) || !strings.Contains(rtf, `\cell`) ||
+		!strings.Contains(rtf, `\outlinelevel0`) || !strings.Contains(rtf, `\cf`) {
+		t.Fatalf("RTF output did not contain table rows: %s", rtf)
+	}
+	gdocPath := filepath.Join(t.TempDir(), "table.gdoc")
+	if err := SaveGDoc(gdocPath, state, false); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := LoadGDoc(gdocPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	restored := document.New()
+	if err := restored.Restore(loaded.Document); err != nil {
+		t.Fatal(err)
+	}
+	if got := restored.Snapshot(); !reflect.DeepEqual(got, state) {
+		t.Fatalf("native table round trip differs:\ngot:  %#v\nwant: %#v", got, state)
+	}
+}
+
 func TestTXTExportPreservesParagraphSpacingAndPageBreaks(t *testing.T) {
 	doc := document.New()
 	doc.LoadText("first\nsecond\nthird")
@@ -172,7 +227,7 @@ func TestDOCXRoundTripPreservesSupportedDocumentContent(t *testing.T) {
 	}
 }
 
-func TestDOCXImportFlattensTableCellsToTabs(t *testing.T) {
+func TestDOCXImportPreservesTableCells(t *testing.T) {
 	filename := filepath.Join(t.TempDir(), "table.docx")
 	file, err := os.Create(filename)
 	if err != nil {
@@ -183,7 +238,7 @@ func TestDOCXImportFlattensTableCellsToTabs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = io.WriteString(part, `<?xml version="1.0" encoding="UTF-8"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:tbl><w:tr><w:tc><w:p><w:r><w:t>left</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>right</w:t></w:r></w:p></w:tc></w:tr></w:tbl></w:body></w:document>`)
+	_, err = io.WriteString(part, `<?xml version="1.0" encoding="UTF-8"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:tbl><w:tr><w:tc><w:p><w:r><w:t>left</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>right</w:t></w:r></w:p></w:tc></w:tr></w:tbl><w:tbl><w:tr><w:tc><w:p><w:r><w:t>another</w:t></w:r></w:p></w:tc></w:tr></w:tbl></w:body></w:document>`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -198,13 +253,79 @@ func TestDOCXImportFlattensTableCellsToTabs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var text strings.Builder
-	if len(state.Paragraphs) == 1 {
-		for _, run := range state.Paragraphs[0].Runs {
-			text.WriteString(run.Text)
+	if len(state.Paragraphs) != 2 || state.Paragraphs[0].Table == nil || state.Paragraphs[1].Table == nil {
+		t.Fatalf("DOCX table was not preserved as a table: %#v", state.Paragraphs)
+	}
+	if got := state.Paragraphs[0].Table.Rows; !reflect.DeepEqual(got, [][]string{{"left", "right"}}) {
+		t.Fatalf("imported table cells = %#v, want [[left right]]", got)
+	}
+	if got := state.Paragraphs[1].Table.Rows; !reflect.DeepEqual(got, [][]string{{"another"}}) {
+		t.Fatalf("second imported table cells = %#v, want [[another]]", got)
+	}
+	restored := document.New()
+	if err := restored.Restore(state); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(restored.Text(), "left") || !strings.Contains(restored.Text(), "right") {
+		t.Fatalf("restored table was not rendered: %q", restored.Text())
+	}
+}
+
+func TestDOCXExportWritesStructuredTable(t *testing.T) {
+	doc := document.New()
+	if err := doc.InsertTable(1, 2); err != nil {
+		t.Fatal(err)
+	}
+	paragraph, _ := doc.TableParagraph()
+	table, _ := doc.TableAt(paragraph)
+	table.Rows[0][0], table.Rows[0][1] = "left", "right"
+	table.EnsureCellFormats()
+	table.CellFormats[0][0] = document.TableCellFormat{
+		Style: document.StyleBold, Foreground: "#123456",
+		ParagraphStyle: document.ParagraphHeading2, Alignment: document.AlignRight,
+	}
+	if err := doc.UpdateTableAt(paragraph, table); err != nil {
+		t.Fatal(err)
+	}
+	filename := filepath.Join(t.TempDir(), "table.docx")
+	if err := SaveDOCX(filename, doc.Snapshot()); err != nil {
+		t.Fatal(err)
+	}
+	archive, err := zip.OpenReader(filename)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer archive.Close()
+	for _, part := range archive.File {
+		if part.Name != "word/document.xml" {
+			continue
 		}
+		reader, err := part.Open()
+		if err != nil {
+			t.Fatal(err)
+		}
+		data, err := io.ReadAll(reader)
+		reader.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		xml := string(data)
+		if !strings.Contains(xml, "<w:tbl>") || !strings.Contains(xml, "<w:tc>") ||
+			!strings.Contains(xml, "left") || !strings.Contains(xml, "right") ||
+			!strings.Contains(xml, `<w:pStyle w:val="Heading2"/>`) ||
+			!strings.Contains(xml, `<w:color w:val="123456"/>`) {
+			t.Fatalf("DOCX table structure missing from document.xml: %s", xml)
+		}
+		loaded, err := LoadDOCX(filename)
+		if err != nil {
+			t.Fatal(err)
+		}
+		format := loaded.Paragraphs[0].Table.CellFormats[0][0]
+		if format.Style&document.StyleBold == 0 || format.Foreground != "#123456" ||
+			format.ParagraphStyle != document.ParagraphHeading2 || format.Alignment != document.AlignRight {
+			t.Fatalf("DOCX table formatting not restored: %#v", format)
+		}
+		return
 	}
-	if len(state.Paragraphs) != 1 || text.String() != "left\tright" {
-		t.Fatalf("DOCX table was not imported as a tab-delimited row: %#v", state.Paragraphs)
-	}
+	t.Fatal("DOCX has no word/document.xml")
 }
