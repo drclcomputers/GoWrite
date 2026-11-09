@@ -14,35 +14,29 @@ import (
 	"github.com/rivo/tview"
 )
 
-const newDocButtonLabel = `
-┌────────────┐
+const newDocButtonLabel = `┌────────────┐
 │   ┌───╮    │
 │   │   ╰┐   │
 │   │ ── │   │
 │   └────┘   │
 └────────────┘
-NEW DOCUMENT
-`
+NEW DOCUMENT`
 
-const openDocButtonLabel = `
-┌────────────┐
+const openDocButtonLabel = `┌────────────┐
 │ ▄▄▄        │
 │ ┌────────┐ │
 │ │ ────── │ │
 │ └────────┘ │
 └────────────┘
-OPEN
-`
+OPEN`
 
-const optionsButtonLabel = `
-┌─────────────┐
+const optionsButtonLabel = `┌─────────────┐
 │ ──●──────── │
 │ ────────●── │
 │ ───●─────── │
 │ ────────●── │
 └─────────────┘
-OPTIONS
-`
+OPTIONS`
 
 // StartMenuResult is what the start menu returns.
 type StartMenuResult int
@@ -115,7 +109,7 @@ func StartMenuUI(app *tview.Application) (StartMenuResult, *StartMenu) {
 
 	leftPanel.
 		AddItem(title, 0, 1, false).
-		AddItem(newBtn, 0, 4, true).
+		AddItem(newBtn, 0, 3, true).
 		AddItem(openBtn, 0, 3, true).
 		AddItem(optionsBtn, 0, 3, true)
 
