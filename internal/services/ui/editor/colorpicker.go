@@ -49,6 +49,7 @@ func (e *Editor) showColorPickerWith(background bool, current string, selectColo
 	table := tview.NewTable().
 		SetBorders(false).
 		SetSelectable(true, true)
+	table.SetBackgroundColor(uitheme.Panel)
 
 	selectedRow, selectedCol := 0, 0
 	for i, c := range palette {
@@ -83,7 +84,7 @@ func (e *Editor) showColorPickerWith(background bool, current string, selectColo
 	table.Select(selectedRow, selectedCol)
 
 	gridPage := tview.NewFlex().SetDirection(tview.FlexRow).AddItem(table, 0, 1, true)
-	gridPage.SetBackgroundColor(uitheme.Ink)
+	gridPage.SetBackgroundColor(uitheme.Panel)
 	pages.AddPage("grid", gridPage, true, true)
 
 	// --- PAGE 2: CUSTOM RGB/HEX FORM ---
@@ -241,15 +242,15 @@ func (e *Editor) showColorPickerWith(background bool, current string, selectColo
 	customForm.AddButton("Apply", applyCustom)
 	customForm.AddButton("Back", func() { pages.SwitchToPage("grid"); e.App.SetFocus(table) })
 
+	uitheme.StyleForm(customForm, "")
 	customForm.SetBorder(false)
-	customForm.SetBackgroundColor(uitheme.Panel)
 
 	topRow := tview.NewFlex().
 		AddItem(customForm, 0, 3, true).
 		AddItem(preview, 0, 1, false)
 
 	customPage := tview.NewFlex().SetDirection(tview.FlexRow).AddItem(topRow, 0, 1, true)
-	customPage.SetBackgroundColor(uitheme.Ink)
+	customPage.SetBackgroundColor(uitheme.Panel)
 	pages.AddPage("custom", customPage, true, false)
 
 	// --- ACTIONS ---
@@ -286,7 +287,7 @@ func (e *Editor) showColorPickerWith(background bool, current string, selectColo
 
 	container := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(pages, 0, 1, true)
-	container.SetBackgroundColor(uitheme.Ink)
+	container.SetBackgroundColor(uitheme.Panel)
 	container.SetBorder(true).
 		SetBorderColor(uitheme.Line).
 		SetTitle(" " + title + " ").

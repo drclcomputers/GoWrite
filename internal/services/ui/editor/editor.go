@@ -141,10 +141,10 @@ func (e *Editor) refreshUI() {
 
 	dirty := ""
 	if e.Doc.IsDirty() {
-		dirty = "●"
+		dirty = " ●"
 	}
 
-	e.View.SetTitle(fmt.Sprintf(" %s %s ", name, dirty))
+	e.View.SetTitle(fmt.Sprintf(" %s%s ", name, dirty))
 
 	line := e.Doc.CursorLine()
 	col := e.Doc.CursorCol()

@@ -105,11 +105,15 @@ func (e *Editor) NewDocument() {
 }
 
 func centredModal(p tview.Primitive, width, height int) tview.Primitive {
-	return tview.NewFlex().SetDirection(tview.FlexRow).
+	center := tview.NewFlex().
 		AddItem(nil, 0, 1, false).
-		AddItem(tview.NewFlex().
-			AddItem(nil, 0, 1, false).
-			AddItem(p, width, 0, true).
-			AddItem(nil, 0, 1, false), height, 0, true).
+		AddItem(p, width, 0, true).
 		AddItem(nil, 0, 1, false)
+	center.SetBackgroundColor(uitheme.Panel)
+	modal := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(nil, 0, 1, false).
+		AddItem(center, height, 0, true).
+		AddItem(nil, 0, 1, false)
+	modal.SetBackgroundColor(uitheme.Panel)
+	return modal
 }

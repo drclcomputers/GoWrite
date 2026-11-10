@@ -125,6 +125,58 @@ func TestUpdateTableUndoAndRedo(t *testing.T) {
 	}
 }
 
+func TestDeleteTableAtRemovesBlockAndSupportsUndoRedo(t *testing.T) {
+	d := New()
+	d.LoadText("alpha omega")
+	d.CursorOff = 5
+	if err := d.InsertTable(2, 2); err != nil {
+		t.Fatal(err)
+	}
+	paragraph, ok := d.TableParagraph()
+	if !ok {
+		t.Fatal("cursor is not in the inserted table")
+	}
+
+	if err := d.DeleteTableAt(paragraph); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := d.TableParagraph(); ok {
+		t.Fatal("table remained after deletion")
+	}
+	if len(d.Paragraphs) != 2 || plainOf(d.Paragraphs[0]) != "alpha" || plainOf(d.Paragraphs[1]) != " omega" {
+		t.Fatalf("surrounding paragraphs were not preserved: %#v", d.Paragraphs)
+	}
+	if !d.Undo() {
+		t.Fatal("undo did not restore deleted table")
+	}
+	if _, ok := d.TableParagraph(); !ok {
+		t.Fatal("undo did not restore table")
+	}
+	if !d.Redo() {
+		t.Fatal("redo did not delete table")
+	}
+	if _, ok := d.TableParagraph(); ok {
+		t.Fatal("redo left table in document")
+	}
+}
+
+func TestDeleteOnlyTableLeavesEmptyParagraph(t *testing.T) {
+	d := New()
+	if err := d.InsertTable(1, 1); err != nil {
+		t.Fatal(err)
+	}
+	paragraph, ok := d.TableParagraph()
+	if !ok {
+		t.Fatal("cursor is not in the inserted table")
+	}
+	if err := d.DeleteTableAt(paragraph); err != nil {
+		t.Fatal(err)
+	}
+	if len(d.Paragraphs) != 1 || plainOf(d.Paragraphs[0]) != "" {
+		t.Fatalf("deleting the only table left paragraphs %#v, want one empty paragraph", d.Paragraphs)
+	}
+}
+
 func TestTableWrapsCellTextAndReflowsWithPageWidth(t *testing.T) {
 	d := New()
 	if err := d.InsertTable(1, 2); err != nil {

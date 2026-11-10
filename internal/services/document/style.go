@@ -12,7 +12,7 @@ import (
 )
 
 func styleTags(s Style, fg, bg string) (open, close string) {
-	const reset = "[-:-:-]"
+	const reset = uitheme.TagReset
 	attrs := ""
 	if s&StyleBold != 0 {
 		attrs += "b"

@@ -300,6 +300,42 @@ func (d *Document) UpdateTableAt(paragraph int, table Table) error {
 	return nil
 }
 
+// DeleteTableAt removes the table containing paragraph.
+func (d *Document) DeleteTableAt(paragraph int) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	start, ok := tableParagraphIndex(d.Paragraphs, paragraph)
+	if !ok {
+		return fmt.Errorf("no table at paragraph %d", paragraph+1)
+	}
+	end := start + 1
+	for end < len(d.Paragraphs) && d.Paragraphs[end].TablePart {
+		end++
+	}
+	pageBreak := d.Paragraphs[start].PageBreak
+
+	d.pushHistory()
+	d.Paragraphs = append(d.Paragraphs[:start], d.Paragraphs[end:]...)
+	if len(d.Paragraphs) == 0 {
+		d.Paragraphs = []Paragraph{{Runs: []Run{{Text: ""}}}}
+		d.CursorPara = 0
+		d.CursorOff = 0
+	} else if start < len(d.Paragraphs) {
+		if pageBreak {
+			d.Paragraphs[start].PageBreak = true
+		}
+		d.CursorPara = start
+		d.CursorOff = 0
+	} else {
+		d.CursorPara = len(d.Paragraphs) - 1
+		d.CursorOff = len([]rune(plainOf(d.Paragraphs[d.CursorPara])))
+	}
+	d.hasAnchor = false
+	d.goalSet = false
+	d.Dirty = true
+	return nil
+}
+
 func (d *Document) reflowTablesLocked() {
 	paragraphs := make([]Paragraph, 0, len(d.Paragraphs))
 	cursorParagraph := 0

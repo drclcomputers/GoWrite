@@ -73,7 +73,6 @@ func (e *Editor) showDateTimeDialogWith(insert func(string), cancel func()) {
 
 func (e *Editor) showInsertTableDialog() {
 	form := tview.NewForm()
-	uitheme.StyleForm(form, "Insert Table")
 
 	rows := tview.NewInputField().
 		SetLabel("Rows ").
@@ -85,6 +84,7 @@ func (e *Editor) showInsertTableDialog() {
 		SetFieldWidth(5)
 	form.AddFormItem(rows)
 	form.AddFormItem(columns)
+	uitheme.StyleForm(form, "Insert Table")
 	dialog := centredModal(form, 44, 10)
 
 	form.AddButton("Insert", func() {

@@ -18,7 +18,7 @@ import (
 const (
 	tabWidth   = 4
 	caretOpen  = uitheme.TagCaret
-	caretClose = "[-:-:-]"
+	caretClose = uitheme.TagReset
 	caretGlyph = "▌"
 	selFg      = uitheme.HexText
 	selBg      = uitheme.HexSelection

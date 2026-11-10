@@ -25,6 +25,7 @@ func (e *Editor) showTableEditor(paragraph int, returnToFormat bool) {
 	table.EnsureCellFormats()
 
 	grid := tview.NewTable().SetBorders(true).SetSelectable(true, true)
+	grid.SetBackgroundColor(uitheme.Panel)
 	actions := tview.NewList().ShowSecondaryText(false)
 	uitheme.StyleList(actions, "")
 	root := tview.NewFlex().SetDirection(tview.FlexRow).
@@ -33,7 +34,7 @@ func (e *Editor) showTableEditor(paragraph int, returnToFormat bool) {
 	root.SetBorder(true).SetTitle(" Table  ·  Enter edits a cell  ·  Tab switches panels  ·  Esc cancels ")
 	root.SetBorderColor(uitheme.Line)
 	root.SetTitleColor(uitheme.Amber)
-	root.SetBackgroundColor(uitheme.Ink)
+	root.SetBackgroundColor(uitheme.Panel)
 	showTableError := func(message string) {
 		modal := tview.NewModal().
 			SetText(message).
@@ -134,7 +135,6 @@ func (e *Editor) showTableEditor(paragraph int, returnToFormat bool) {
 		background := format.Background
 
 		form := tview.NewForm()
-		uitheme.StyleForm(form, "Edit Table Cell")
 		form.AddFormItem(contents).
 			AddFormItem(bold).
 			AddFormItem(italic).
@@ -142,6 +142,7 @@ func (e *Editor) showTableEditor(paragraph int, returnToFormat bool) {
 			AddFormItem(strike).
 			AddFormItem(paragraphStyle).
 			AddFormItem(alignment)
+		uitheme.StyleForm(form, "Edit Table Cell")
 		contents.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 			if event.Key() == tcell.KeyTab {
 				form.SetFocus(1)
@@ -285,6 +286,24 @@ func (e *Editor) showTableEditor(paragraph int, returnToFormat bool) {
 			table.CellFormats[ri] = append(table.CellFormats[ri][:col], table.CellFormats[ri][col+1:]...)
 		}
 		refreshGrid(row, min(col, len(table.Rows[0])-1))
+	})
+	addAction("Delete table…", func() {
+		confirmation := tview.NewModal().
+			SetText("Delete this table and all its contents?").
+			AddButtons([]string{"Yes", "No"}).
+			SetDoneFunc(func(_ int, label string) {
+				if label != "Yes" {
+					e.App.SetRoot(root, true).SetFocus(actions)
+					return
+				}
+				if err := e.Doc.DeleteTableAt(paragraph); err != nil {
+					showTableError(err.Error())
+					return
+				}
+				restoreEditor()
+			})
+		uitheme.StyleModalWarn(confirmation, "Delete table")
+		e.App.SetRoot(confirmation, true).SetFocus(confirmation)
 	})
 	addAction("Save table", func() {
 		if err := e.Doc.UpdateTableAt(paragraph, table); err != nil {

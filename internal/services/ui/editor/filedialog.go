@@ -392,12 +392,15 @@ func (e *Editor) showFileDialogWithReturn(mode fileDialogMode, afterSave func(),
 		SetText(uitheme.Markup(" {val}Alt+Shift+←/→{clear} panels    {val}Enter{clear} select    {val}Tab{clear} buttons    {val}Esc{clear} back")).
 		SetDynamicColors(true).
 		SetTextAlign(tview.AlignCenter)
+	instructions.SetTextStyle(tcell.StyleDefault.Background(uitheme.Panel))
+	instructions.SetBackgroundColor(uitheme.Panel)
 	container := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(mainLayout, 0, 1, true).
 		AddItem(instructions, 1, 0, false)
 	container.SetBorder(true).
 		SetBorderColor(uitheme.Line).
 		SetTitleColor(uitheme.Amber)
+	container.SetBackgroundColor(uitheme.Panel)
 	switch mode {
 	case fileDialogOpen:
 		container.SetTitle(" Open Document ")

@@ -56,14 +56,14 @@ const (
 	HexCyan      = "#5ec8c8" // top-bar labels, Heading 1
 	HexSky       = "#8ecae6" // Heading 2, code, help headings
 	HexMint      = "#7dcea0" // status-bar label, help headings
-	HexBtn       = "#1c6e80" // button and selected-row background
+	HexBtn       = "#2463a6" // button and selected-row background
 	HexSelection = "#3e5c7a" // selected text in the document
 )
 
 // Feedback.
 const (
 	HexOk   = "#5ab48c" // success
-	HexWarn = "#c47a5c" // warning
+	HexWarn = "#ff4a00" // warning
 )
 
 // Starting value of the colour picker's "Custom..." form.
@@ -82,8 +82,11 @@ const (
 	HexCode     = HexSky
 )
 
-// TagCaret draws the text cursor: black on amber.
-const TagCaret = "[-:-:-][black:" + HexAmber + "]"
+// TagCaret draws the text cursor using the app's ink and amber colors.
+const (
+	TagReset = "[" + HexText + ":" + HexInk + "]"
+	TagCaret = TagReset + "[" + HexInk + ":" + HexAmber + "]"
+)
 
 // ---------------------------------------------------------------------------
 // 3. tcell colours
@@ -95,6 +98,7 @@ var (
 	Panel    = ParseHex(HexPanel)
 	Text     = ParseHex(HexText)
 	Label    = ParseHex(HexLabel)
+	Muted    = ParseHex(HexMuted)
 	Line     = ParseHex(HexLine)
 	Amber    = ParseHex(HexAmber)
 	AmberDim = ParseHex(HexAmberDim)
@@ -106,10 +110,26 @@ var (
 // These use the terminal's own ANSI palette instead of RGB, so they follow the
 // user's terminal theme. Swap them for ParseHex(...) to pin them to the palette.
 var (
-	BtnText     = tcell.ColorWhite      // text on a Btn background or selected row
-	BtnNewText  = tcell.ColorLightGreen // start menu "New document"
-	BtnOpenText = tcell.ColorBlue       // start menu "Open document"
+	BtnText     = Text
+	BtnNewText  = ParseHex(HexMint)
+	BtnOpenText = ParseHex(HexSky)
 )
+
+func init() {
+	tview.Styles = tview.Theme{
+		PrimitiveBackgroundColor:    Ink,
+		ContrastBackgroundColor:     Btn,
+		MoreContrastBackgroundColor: Amber,
+		BorderColor:                 Line,
+		TitleColor:                  Amber,
+		GraphicsColor:               Line,
+		PrimaryTextColor:            Text,
+		SecondaryTextColor:          Label,
+		TertiaryTextColor:           Muted,
+		InverseTextColor:            Text,
+		ContrastSecondaryTextColor:  Text,
+	}
+}
 
 // ---------------------------------------------------------------------------
 // 4. Markup
@@ -125,7 +145,7 @@ var (
 //	{key}     label                  {h1}  help heading, amber
 //	{val}     value / hotkey         {h2}  help heading, mint
 //	{ok}      success label          {h3}  help heading, sky
-//	{plain}   terminal white         {muted} hint     {dim} footnote
+//	{plain}   primary text            {muted} hint     {dim} footnote
 //	{bright}  pure white             {version} version number
 //	{end}     reset attributes       {clear} reset colour
 func Markup(s string) string { return markup.Replace(s) }
@@ -134,16 +154,16 @@ var markup = strings.NewReplacer(
 	"{key}", "["+HexCyan+"]",
 	"{val}", "["+HexAmber+"]",
 	"{ok}", "["+HexMint+"]",
-	"{plain}", "[white]",
+	"{plain}", "["+HexText+"]",
 	"{bright}", "["+HexWhite+"]",
 	"{h1}", "["+HexAmber+"::b]",
 	"{h2}", "["+HexMint+"::b]",
 	"{h3}", "["+HexSky+"::b]",
 	"{muted}", "["+HexMuted+"]",
 	"{dim}", "["+HexDim+"]",
-	"{version}", "[yellow]",
+	"{version}", "["+HexAmber+"]",
 	"{end}", "[::-]",
-	"{clear}", "[-]",
+	"{clear}", "["+HexText+"]",
 )
 
 // ---------------------------------------------------------------------------
@@ -220,23 +240,23 @@ func ValidHex(s string) bool {
 	return err == nil
 }
 
-// ParseHex converts #RRGGBB to a tcell colour, or tcell.ColorDefault if s is not valid.
+// ParseHex converts #RRGGBB to a tcell colour, falling back to Ink if s is invalid.
 func ParseHex(s string) tcell.Color {
 	if !ValidHex(s) {
-		return tcell.ColorDefault
+		s = HexInk
 	}
 	v, _ := strconv.ParseUint(s[1:], 16, 24)
 	return tcell.NewRGBColor(int32((v>>16)&0xff), int32((v>>8)&0xff), int32(v&0xff))
 }
 
-// Contrast returns black or white, whichever is easier to read on c.
+// Contrast returns Ink or Text, whichever is easier to read on c.
 func Contrast(c tcell.Color) tcell.Color {
 	r, g, b := c.RGB()
 	lum := 0.299*float64(r) + 0.587*float64(g) + 0.114*float64(b)
 	if lum > 140 {
-		return tcell.ColorBlack
+		return Ink
 	}
-	return tcell.ColorWhite
+	return Text
 }
 
 // ---------------------------------------------------------------------------
@@ -279,6 +299,13 @@ func StyleForm(f *tview.Form, title string) *tview.Form {
 	f.SetButtonTextColor(BtnText)
 	f.SetButtonActivatedStyle(activatedButton())
 	f.SetBackgroundColor(Panel)
+	for i := 0; i < f.GetFormItemCount(); i++ {
+		if item, ok := f.GetFormItem(i).(interface {
+			SetBackgroundColor(tcell.Color) *tview.Box
+		}); ok {
+			item.SetBackgroundColor(Panel)
+		}
+	}
 	return f
 }
 
@@ -293,25 +320,25 @@ func StyleButton(b *tview.Button) *tview.Button {
 
 // StyleModal paints a message on a dark background; warnings get a rust border, successes green.
 func StyleModal(m *tview.Modal, title string) *tview.Modal {
-	return tone(m, title, Line, Amber)
+	return tone(m, title, Btn)
 }
 
 func StyleModalWarn(m *tview.Modal, title string) *tview.Modal {
-	return tone(m, title, Warn, Warn)
+	return tone(m, title, Warn)
 }
 
 func StyleModalOK(m *tview.Modal, title string) *tview.Modal {
-	return tone(m, title, Ok, Ok)
+	return tone(m, title, Ok)
 }
 
-func tone(m *tview.Modal, title string, border, titleColor tcell.Color) *tview.Modal {
+func tone(m *tview.Modal, title string, borderColor tcell.Color) *tview.Modal {
 	m.SetBorder(true)
 	if t := strings.TrimSpace(title); t != "" {
 		m.SetTitle(" " + t + " ")
 	}
 	m.SetTitleAlign(tview.AlignCenter)
-	m.SetTitleColor(titleColor)
-	m.SetBorderColor(border)
+	m.SetTitleColor(Text)
+	m.SetBorderColor(borderColor)
 	m.SetBackgroundColor(Panel)
 	m.SetTextColor(Text)
 	m.SetButtonBackgroundColor(Btn)
@@ -325,8 +352,9 @@ func StyleList(l *tview.List, title string) *tview.List {
 	Paint(l, title)
 	l.SetSelectedBackgroundColor(Btn)
 	l.SetSelectedTextColor(BtnText)
-	l.SetMainTextColor(Text)
-	l.SetSecondaryTextColor(Label)
+	l.SetMainTextStyle(tcell.StyleDefault.Foreground(Text).Background(Panel))
+	l.SetSecondaryTextStyle(tcell.StyleDefault.Foreground(Label).Background(Panel))
+	l.SetShortcutStyle(tcell.StyleDefault.Foreground(Label).Background(Panel))
 	l.SetBackgroundColor(Panel)
 	return l
 }
