@@ -113,7 +113,7 @@ func (e *Editor) redraw() {
 	if h > 0 {
 		row := e.Doc.CursorRow()
 		if row < top {
-			top = 0 // Prevent the page top border from being hidden under the window border
+			top = 0
 		} else if row >= top+h {
 			top = row - h + 1
 		}

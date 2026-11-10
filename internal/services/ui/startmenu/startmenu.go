@@ -67,37 +67,38 @@ func StartMenuUI(app *tview.Application) (StartMenuResult, *StartMenu) {
 	title := tview.NewTextView().
 		SetText(fmt.Sprintf("[::b]GoWrite[::-] [yellow]v%s[::-]", utils.VER)).
 		SetTextAlign(tview.AlignCenter).
+		SetTextStyle(tcell.StyleDefault.Background(uitheme.Panel)).
 		SetDynamicColors(true)
 	title.SetBorder(true).
 		SetTitleColor(uitheme.Amber).
 		SetBorderColor(uitheme.Line).
-		SetBackgroundColor(uitheme.Ink)
+		SetBackgroundColor(uitheme.Panel)
 
 	newBtn := tview.NewTextView().
 		SetText(newDocButtonLabel).
 		SetTextAlign(tview.AlignCenter).
-		SetTextColor(tcell.ColorLightGreen)
+		SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorLightGreen).Background(uitheme.Panel))
 	newBtn.SetBorder(true).
 		SetBorderColor(uitheme.Ok).
-		SetBackgroundColor(tcell.NewRGBColor(16, 28, 26))
+		SetBackgroundColor(uitheme.Panel)
 	newBtn.SetScrollable(false)
 
 	openBtn := tview.NewTextView().
 		SetText(openDocButtonLabel).
 		SetTextAlign(tview.AlignCenter).
-		SetTextColor(tcell.NewRGBColor(168, 212, 220))
+		SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorBlue).Background(uitheme.Panel))
 	openBtn.SetBorder(true).
 		SetBorderColor(uitheme.Line).
-		SetBackgroundColor(tcell.NewRGBColor(14, 22, 32))
+		SetBackgroundColor(uitheme.Panel)
 	openBtn.SetScrollable(false)
 
 	optionsBtn := tview.NewTextView().
 		SetText(optionsButtonLabel).
 		SetTextAlign(tview.AlignCenter).
-		SetTextColor(uitheme.Amber)
+		SetTextStyle(tcell.StyleDefault.Foreground(uitheme.Amber).Background(uitheme.Panel))
 	optionsBtn.SetBorder(true).
 		SetBorderColor(tcell.NewRGBColor(160, 130, 70)).
-		SetBackgroundColor(tcell.NewRGBColor(28, 24, 16))
+		SetBackgroundColor(uitheme.Panel)
 	optionsBtn.SetScrollable(false)
 	optionsBtn.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() == tcell.KeyEnter {
@@ -119,10 +120,11 @@ func StartMenuUI(app *tview.Application) (StartMenuResult, *StartMenu) {
 	recentTitle := tview.NewTextView().
 		SetText("[::b]Recent Files[::-]").
 		SetTextAlign(tview.AlignCenter).
+		SetTextStyle(tcell.StyleDefault.Background(uitheme.Panel)).
 		SetDynamicColors(true)
 	recentTitle.SetBorder(true).
 		SetBorderColor(uitheme.Line).
-		SetBackgroundColor(uitheme.Ink)
+		SetBackgroundColor(uitheme.Panel)
 
 	recentList := tview.NewList()
 	uitheme.StyleList(recentList, "")
@@ -141,7 +143,7 @@ func StartMenuUI(app *tview.Application) (StartMenuResult, *StartMenu) {
 		SetTitle(" GoWrite  ·  arrows or tab to move  ·  Enter to choose  ·  Esc/Q quits ").
 		SetTitleColor(uitheme.Amber).
 		SetBorderColor(uitheme.Line).
-		SetBackgroundColor(tcell.NewRGBColor(10, 12, 18))
+		SetBackgroundColor(uitheme.Panel)
 
 	leftItems := []tview.Primitive{newBtn, openBtn, optionsBtn}
 	currentLeft := 0

@@ -43,7 +43,7 @@ func Paint(b boxed, title string) {
 	b.SetTitleAlign(tview.AlignCenter)
 	b.SetTitleColor(Amber)
 	b.SetBorderColor(Line)
-	//b.SetBackgroundColor(Panel)
+	b.SetBackgroundColor(Panel)
 }
 
 // StyleForm paints a form and its fields and buttons.
@@ -55,6 +55,7 @@ func StyleForm(f *tview.Form, title string) *tview.Form {
 	f.SetButtonBackgroundColor(Btn)
 	f.SetButtonTextColor(tcell.ColorWhite)
 	f.SetButtonActivatedStyle(tcell.StyleDefault.Background(Amber).Foreground(Ink))
+	f.SetBackgroundColor(Panel)
 	return f
 }
 
@@ -94,5 +95,6 @@ func StyleList(l *tview.List, title string) *tview.List {
 	l.SetSelectedTextColor(tcell.ColorWhite)
 	l.SetMainTextColor(Text)
 	l.SetSecondaryTextColor(Label)
+	l.SetBackgroundColor(Panel)
 	return l
 }
