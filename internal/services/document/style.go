@@ -95,8 +95,18 @@ func (d *Document) SetParagraphAlign(a Align) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.ensureCursor()
-	d.pushHistory()
 	first, last := d.cursorParagraphs()
+	changed := false
+	for i := first; i <= last; i++ {
+		if d.Paragraphs[i].Align != a {
+			changed = true
+			break
+		}
+	}
+	if !changed {
+		return
+	}
+	d.pushHistory()
 	for i := first; i <= last; i++ {
 		d.Paragraphs[i].Align = a
 	}

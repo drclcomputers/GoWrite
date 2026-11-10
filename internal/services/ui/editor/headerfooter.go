@@ -55,6 +55,7 @@ func (e *Editor) showHeaderFooterWithClose(close func()) {
 		ps.PageNumbers.Format = document.NumberFormat(option)
 	})
 
+	form.AddTextView("", "", 0, 1, false, false)
 	form.AddButton("Apply", func() {
 		e.Doc.SetPageSettings(ps)
 		shrunk := e.Doc.GetPageSettings().MarginTop != ps.MarginTop ||
@@ -65,6 +66,7 @@ func (e *Editor) showHeaderFooterWithClose(close func()) {
 		}
 	})
 	form.AddButton("Cancel", close)
+	form.SetButtonsAlign(tview.AlignCenter)
 
 	uitheme.StyleForm(form, "Header & Footer")
 	form.SetBorder(true)

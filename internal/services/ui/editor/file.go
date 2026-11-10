@@ -91,6 +91,7 @@ func (e *Editor) loadFromFile(filename string) error {
 		if err != nil {
 			return err
 		}
+		file.Document.Page = file.Document.Page.FitToWidth(e.terminalPageWidth())
 		if err := e.Doc.Restore(file.Document); err != nil {
 			return fmt.Errorf("invalid GoWrite document: %w", err)
 		}

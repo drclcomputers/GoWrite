@@ -46,6 +46,44 @@ func (e *Editor) showPageSetupFromFormat() {
 	e.showPageSetupWithClose(e.showFormatDialog)
 }
 
+type pageSetupButton struct {
+	*tview.Button
+}
+
+func (b *pageSetupButton) GetLabel() string { return "" }
+
+func (b *pageSetupButton) Draw(screen tcell.Screen) {
+	x, y, width, height := b.GetRect()
+	buttonWidth := tview.TaggedStringWidth(b.Button.GetLabel()) + 4
+	if buttonWidth > width {
+		buttonWidth = width
+	}
+	b.Button.SetRect(x, y, buttonWidth, height)
+	b.Button.Draw(screen)
+}
+
+func (b *pageSetupButton) GetFieldWidth() int { return 0 }
+
+func (b *pageSetupButton) GetFieldHeight() int { return 1 }
+
+func (b *pageSetupButton) SetFormAttributes(int, tcell.Color, tcell.Color, tcell.Color, tcell.Color) tview.FormItem {
+	return b
+}
+
+func (b *pageSetupButton) SetFinishedFunc(handler func(tcell.Key)) tview.FormItem {
+	b.SetExitFunc(handler)
+	return b
+}
+
+func (b *pageSetupButton) SetDisabled(disabled bool) tview.FormItem {
+	b.Button.SetDisabled(disabled)
+	return b
+}
+
+func (b *pageSetupButton) GetDisabled() bool {
+	return b.Button.GetDisabled()
+}
+
 func (e *Editor) showPageSetupWithClose(close func()) {
 	ps := e.Doc.GetPageSettings()
 	form := tview.NewForm()
@@ -78,7 +116,8 @@ func (e *Editor) showPageSetupWithClose(close func()) {
 
 	var pageModal tview.Primitive
 	var backgroundButton *tview.Button
-	form.AddButton("Page background: "+ps.Background, func() {
+	form.AddTextView("", "", 0, 1, false, false)
+	backgroundButton = uitheme.StyleButton(tview.NewButton("Page background: " + ps.Background).SetSelectedFunc(func() {
 		e.showColorPickerWith(true, ps.Background, func(color string) {
 			if color == "" {
 				color = uitheme.HexPageBackground
@@ -89,8 +128,10 @@ func (e *Editor) showPageSetupWithClose(close func()) {
 		}, func() {
 			e.App.SetRoot(pageModal, true).SetFocus(backgroundButton)
 		})
-	})
-	backgroundButton = form.GetButton(form.GetButtonCount() - 1)
+	}))
+	form.AddFormItem(&pageSetupButton{Button: backgroundButton})
+
+	form.AddTextView("", "", 0, 1, false, false)
 
 	// apply stores the form's settings; it reports whether margins had to shrink.
 	apply := func() bool {
@@ -109,6 +150,7 @@ func (e *Editor) showPageSetupWithClose(close func()) {
 		}
 	})
 	form.AddButton("Cancel", close)
+	form.SetButtonsAlign(tview.AlignCenter)
 
 	uitheme.StyleForm(form, "Page Setup")
 	form.SetBorder(true)

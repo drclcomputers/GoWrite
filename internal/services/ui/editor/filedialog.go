@@ -345,12 +345,24 @@ func (e *Editor) showFileDialogWithReturn(mode fileDialogMode, afterSave func(),
 				updateList(filename)
 				return
 			}
-			if err := e.loadFromFile(filename); err != nil {
-				showDialogError(fmt.Sprintf("Could not open %s: %v", filename, err))
+			openSelectedFile := func() {
+				if err := e.loadFromFile(filename); err != nil {
+					showDialogError(fmt.Sprintf("Could not open %s: %v", filename, err))
+					return
+				}
+				e.App.SetRoot(e.Root, true).SetFocus(e.View)
+				e.redraw()
+			}
+			if e.Doc.IsDirty() {
+				e.confirmUnsavedChanges(
+					"You have unsaved changes.\nWould you like to save before opening another file?",
+					openSelectedFile,
+					dialog,
+					form,
+				)
 				return
 			}
-			e.App.SetRoot(e.Root, true).SetFocus(e.View)
-			e.redraw()
+			openSelectedFile()
 		})
 	} else {
 		form.AddButton("Save", func() {

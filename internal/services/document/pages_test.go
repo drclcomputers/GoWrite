@@ -350,3 +350,35 @@ func TestMarginAndHeaderChangesAreUndoable(t *testing.T) {
 		t.Fatalf("oversized margin was not clamped: %d", got.MarginLeft)
 	}
 }
+
+func TestFitToWidthUsesA4ProportionsAndMinimumDimensions(t *testing.T) {
+	page := PageSettings{Width: 100, Height: 1000}
+	got := page.FitToWidth(40)
+	if got.Width != 40 || got.Height != 24 {
+		t.Fatalf("FitToWidth(40) = %dx%d, want 40x24", got.Width, got.Height)
+	}
+
+	got = page.FitToWidth(5)
+	if got.Width != 10 || got.Height != 10 {
+		t.Fatalf("FitToWidth(5) = %dx%d, want minimum 10x10", got.Width, got.Height)
+	}
+}
+
+func TestRestoreBoundsExtremePageDimensions(t *testing.T) {
+	state := New().Snapshot()
+	maxInt := int(^uint(0) >> 1)
+	state.Page.Width, state.Page.Height = maxInt, maxInt
+	state.Page.MarginLeft, state.Page.MarginRight = maxInt, maxInt
+	state.Page.MarginTop, state.Page.MarginBottom = maxInt, maxInt
+
+	restored := New()
+	if err := restored.Restore(state); err != nil {
+		t.Fatal(err)
+	}
+	page := restored.GetPageSettings()
+	if page.Width != maxRestoredPageWidth || page.Height != 590 {
+		t.Fatalf("restored page dimensions = %dx%d, want %dx590",
+			page.Width, page.Height, maxRestoredPageWidth)
+	}
+	_ = restored.StyledTextWithCursorAndMarks(false)
+}

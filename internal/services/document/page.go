@@ -71,8 +71,10 @@ type PageNumbers struct {
 }
 
 const (
-	minBodyWidth = 10
-	minBodyRows  = 3
+	minBodyWidth  = 10
+	minBodyRows   = 3
+	minPageWidth  = 10
+	minPageHeight = 10
 )
 
 // PageSettings holds the on-screen paper: size, margins, header and footer.
@@ -107,12 +109,12 @@ func (p PageSettings) Normalized() PageSettings {
 	if !uitheme.ValidHex(p.Background) {
 		p.Background = uitheme.HexPageBackground
 	}
+	p.Width, p.Height = max(p.Width, minPageWidth), max(p.Height, minPageHeight)
 	p.MarginLeft, p.MarginRight = max(p.MarginLeft, 0), max(p.MarginRight, 0)
 	p.MarginTop, p.MarginBottom = max(p.MarginTop, 0), max(p.MarginBottom, 0)
 
-	if sum, room := p.MarginLeft+p.MarginRight, max(p.Width-minBodyWidth, 0); sum > room {
-		p.MarginLeft, p.MarginRight = p.MarginLeft*room/sum, p.MarginRight*room/sum
-	}
+	p.MarginLeft, p.MarginRight = fitMargins(
+		p.MarginLeft, p.MarginRight, max(p.Width-minBodyWidth, 0))
 
 	chrome := 0
 	if p.hasHeader() {
@@ -121,10 +123,38 @@ func (p PageSettings) Normalized() PageSettings {
 	if p.hasFooter() {
 		chrome++
 	}
-	if sum, room := p.MarginTop+p.MarginBottom, max(p.Height-chrome-minBodyRows, 0); sum > room {
-		p.MarginTop, p.MarginBottom = p.MarginTop*room/sum, p.MarginBottom*room/sum
-	}
+	p.MarginTop, p.MarginBottom = fitMargins(
+		p.MarginTop, p.MarginBottom, max(p.Height-chrome-minBodyRows, 0))
 	return p
+}
+
+func fitMargins(first, second, room int) (int, int) {
+	if first <= room && second <= room && first <= room-second {
+		return first, second
+	}
+	total := float64(first) + float64(second)
+	if total == 0 || room == 0 {
+		return 0, 0
+	}
+	scaledFirst := float64(first) / total * float64(room)
+	if scaledFirst >= float64(room) {
+		first = room
+	} else {
+		first = int(scaledFirst)
+	}
+	return first, room - first
+}
+
+// FitToWidth bounds a page to a terminal width and uses A4 proportions.
+func (p PageSettings) FitToWidth(maxWidth int) PageSettings {
+	if p.Width <= 0 || p.Height <= 0 {
+		return p
+	}
+	maxWidth = max(maxWidth, minPageWidth)
+	p.Width = min(max(p.Width, minPageWidth), maxWidth)
+	a4Width, a4Height := GetDimensions(SizeA4, Portrait)
+	p.Height = max(minPageHeight, int(math.Round(float64(p.Width)*float64(a4Height)/float64(a4Width))))
+	return p.Normalized()
 }
 
 // DefaultA4Portrait returns the default settings.

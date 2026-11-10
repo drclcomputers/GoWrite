@@ -16,7 +16,10 @@ import (
 	"gowrite/internal/services/document"
 )
 
-const gdocVersion = 1
+const (
+	gdocVersion           = 1
+	maxNativeDocumentSize = int64(500 << 20)
+)
 
 type GDoc struct {
 	Format   string         `json:"format"`
@@ -65,7 +68,7 @@ func LoadGDoc(filename string) (GDoc, error) {
 	if err != nil {
 		return result, fmt.Errorf("decompress native document: %w", err)
 	}
-	data, readErr := io.ReadAll(gz)
+	data, readErr := readNativePayload(gz, maxNativeDocumentSize)
 	closeErr := gz.Close()
 	if readErr != nil {
 		return result, fmt.Errorf("read compressed document: %w", readErr)
@@ -83,6 +86,20 @@ func LoadGDoc(filename string) (GDoc, error) {
 		return result, fmt.Errorf("unsupported GoWrite document version %d", result.Version)
 	}
 	return result, nil
+}
+
+func readNativePayload(reader io.Reader, limit int64) ([]byte, error) {
+	if limit < 0 {
+		return nil, fmt.Errorf("native document size limit cannot be negative")
+	}
+	data, err := io.ReadAll(io.LimitReader(reader, limit+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > limit {
+		return nil, fmt.Errorf("decompressed native document exceeds the %d-byte limit", limit)
+	}
+	return data, nil
 }
 
 func writeAtomic(filename string, write func(io.Writer) error) error {

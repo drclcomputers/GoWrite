@@ -44,6 +44,7 @@ func (e *Editor) showColorPickerWith(background bool, current string, selectColo
 	pages := tview.NewPages()
 	palette := uitheme.Palette
 	const cols = 5
+	var pickerModal, customModal tview.Primitive
 
 	// --- PAGE 1: GRID PALETTE ---
 	table := tview.NewTable().
@@ -229,7 +230,6 @@ func (e *Editor) showColorPickerWith(background bool, current string, selectColo
 		AddFormItem(blueInput).
 		AddFormItem(hexInput)
 
-	var pickerModal tview.Primitive
 	applyCustom := func() {
 		color := hexInput.GetText()
 		if !uitheme.ValidHex(color) {
@@ -240,13 +240,16 @@ func (e *Editor) showColorPickerWith(background bool, current string, selectColo
 	}
 
 	customForm.AddButton("Apply", applyCustom)
-	customForm.AddButton("Back", func() { pages.SwitchToPage("grid"); e.App.SetFocus(table) })
+	customForm.AddButton("Back", func() {
+		pages.SwitchToPage("grid")
+		e.App.SetRoot(pickerModal, true).SetFocus(table)
+	})
 
 	uitheme.StyleForm(customForm, "")
 	customForm.SetBorder(false)
 
 	topRow := tview.NewFlex().
-		AddItem(customForm, 0, 3, true).
+		AddItem(customForm, 0, 1, true).
 		AddItem(preview, 0, 1, false)
 
 	customPage := tview.NewFlex().SetDirection(tview.FlexRow).AddItem(topRow, 0, 1, true)
@@ -258,7 +261,7 @@ func (e *Editor) showColorPickerWith(background bool, current string, selectColo
 		row, col := table.GetSelection()
 		if row == customRow && col == customCol {
 			pages.SwitchToPage("custom")
-			e.App.SetFocus(customForm)
+			e.App.SetRoot(customModal, true).SetFocus(customForm)
 			return
 		}
 		idx := row*cols + col
@@ -279,7 +282,7 @@ func (e *Editor) showColorPickerWith(background bool, current string, selectColo
 	customForm.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() == tcell.KeyEscape {
 			pages.SwitchToPage("grid")
-			e.App.SetFocus(table)
+			e.App.SetRoot(pickerModal, true).SetFocus(table)
 			return nil
 		}
 		return event
@@ -294,6 +297,7 @@ func (e *Editor) showColorPickerWith(background bool, current string, selectColo
 		SetTitleColor(uitheme.Amber).
 		SetTitleAlign(tview.AlignCenter)
 
-	pickerModal = centredModal(container, 62, 12)
+	pickerModal = centredModal(container, 62, 8)
+	customModal = centredModal(container, 62, 13)
 	e.App.SetRoot(pickerModal, true).SetFocus(table)
 }

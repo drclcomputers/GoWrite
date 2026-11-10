@@ -68,6 +68,19 @@ func TestGDocRoundTripPreservesDocumentAndEditorState(t *testing.T) {
 	}
 }
 
+func TestReadNativePayloadEnforcesDecompressedLimit(t *testing.T) {
+	if _, err := readNativePayload(bytes.NewReader([]byte("1234567")), 6); err == nil {
+		t.Fatal("payload over the limit was accepted")
+	}
+	got, err := readNativePayload(bytes.NewReader([]byte("123456")), 6)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "123456" {
+		t.Fatalf("payload = %q, want %q", got, "123456")
+	}
+}
+
 func TestExportTXTAndRTF(t *testing.T) {
 	doc := document.New()
 	doc.LoadText("plain\nrich {text}")

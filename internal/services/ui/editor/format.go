@@ -234,9 +234,9 @@ func (e *Editor) showFormatDialog() {
 		AddItem(panelInBox(viewPanel), 0, 1, false)
 
 	rightCol := tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(insertBox, 0, 3, false).
-		AddItem(paragraphForm, 0, 2, false).
-		AddItem(pageBox, 0, 2, false)
+		AddItem(insertBox, 0, 5, false).
+		AddItem(paragraphForm, 0, 4, false).
+		AddItem(pageBox, 0, 3, false)
 
 	columns := tview.NewFlex().
 		AddItem(leftCol, 0, 1, false).

@@ -25,6 +25,7 @@ type Editor struct {
 	Status *tview.TextView
 
 	lastW, lastH           int
+	lastScreenWidth        int
 	flashSeq               int
 	showFormattingMarks    bool
 	defaultFormattingMarks bool
@@ -78,8 +79,11 @@ func NewEditor(app *tview.Application, doc *document.Document, settings utils.Se
 	e.Root.SetInputCapture(e.handleKeys)
 	e.View.SetInputCapture(e.handleKeys)
 
-	app.SetAfterDrawFunc(func(_ tcell.Screen) {
+	app.SetAfterDrawFunc(func(screen tcell.Screen) {
 		_, _, w, h := e.View.GetInnerRect()
+		if screenWidth, _ := screen.Size(); screenWidth > 0 {
+			e.lastScreenWidth = screenWidth
+		}
 		if w == e.lastW && h == e.lastH {
 			return
 		}
@@ -89,6 +93,22 @@ func NewEditor(app *tview.Application, doc *document.Document, settings utils.Se
 
 	e.redraw()
 	return e
+}
+
+func (e *Editor) terminalPageWidth() int {
+	if e.lastScreenWidth > 0 {
+		return max(10, e.lastScreenWidth-6)
+	}
+	if e.View != nil {
+		_, _, width, _ := e.View.GetInnerRect()
+		if width > 0 {
+			return max(10, width-2)
+		}
+	}
+	if e.Doc != nil && e.Doc.DisplayWidth > 0 {
+		return max(10, e.Doc.DisplayWidth-2)
+	}
+	return 78
 }
 
 func applyDocumentDefaults(doc *document.Document, settings utils.Settings) {

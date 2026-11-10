@@ -22,23 +22,38 @@ func (e *Editor) confirmQuit() {
 		e.App.Stop()
 		return
 	}
+	e.confirmUnsavedChanges(
+		"You have unsaved changes.\nWould you like to save before exiting?",
+		func() { e.App.Stop() },
+		e.Root,
+		e.View,
+	)
+}
+
+func (e *Editor) confirmUnsavedChanges(message string, action func(), returnTo, returnFocus tview.Primitive) {
+	if returnTo == nil {
+		returnTo = e.Root
+	}
+	if returnFocus == nil {
+		returnFocus = e.View
+	}
 	modal := tview.NewModal().
-		SetText("You have unsaved changes.\nWould you like to save before exiting?").
+		SetText(message).
 		AddButtons([]string{"Save", "Don't Save", "Cancel"}).
 		SetDoneFunc(func(_ int, buttonLabel string) {
 			switch buttonLabel {
 			case "Save":
-				e.saveForExit()
+				e.saveBeforeAction(action, returnTo, returnFocus)
 			case "Don't Save":
-				e.App.Stop()
+				action()
 			default:
-				e.App.SetRoot(e.Root, true).SetFocus(e.View)
+				e.App.SetRoot(returnTo, true).SetFocus(returnFocus)
 			}
 		})
 	uitheme.StyleModalWarn(modal, "Unsaved Changes")
 	modal.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() == tcell.KeyEscape {
-			e.App.SetRoot(e.Root, true).SetFocus(e.View)
+			e.App.SetRoot(returnTo, true).SetFocus(returnFocus)
 			return nil
 		}
 		return event
@@ -46,21 +61,25 @@ func (e *Editor) confirmQuit() {
 	e.App.SetRoot(modal, true).SetFocus(modal)
 }
 
-func (e *Editor) saveForExit() {
+func (e *Editor) saveBeforeAction(action func(), returnTo, returnFocus tview.Primitive) {
+	if returnTo == nil {
+		returnTo = e.Root
+	}
+	if returnFocus == nil {
+		returnFocus = e.View
+	}
 	filename := e.Doc.GetFilename()
 	ext := filepath.Ext(filename)
 	if strings.EqualFold(ext, ".gdoc") || strings.EqualFold(ext, ".docx") ||
 		strings.EqualFold(ext, ".txt") || strings.EqualFold(ext, ".rtf") {
 		if err := e.saveDocumentToFile(filename); err != nil {
-			ShowErrorModal(e.App, e.Root, "Could not save before exiting: "+err.Error())
+			ShowErrorModal(e.App, returnTo, "Could not save before continuing: "+err.Error())
 			return
 		}
-		e.App.Stop()
+		action()
 		return
 	}
-	e.showFileDialogWithSaveCallback(fileDialogSave, func() {
-		e.App.Stop()
-	})
+	e.showFileDialogWithReturn(fileDialogSave, action, returnTo, returnFocus)
 }
 
 func (e *Editor) newDocument() {

@@ -7,6 +7,11 @@ package document
 
 import "fmt"
 
+const (
+	maxRestoredPageWidth  = 1000
+	maxRestoredPageHeight = 600
+)
+
 // State contains the persistent document data, excluding transient selection
 // and undo history.
 type State struct {
@@ -54,6 +59,9 @@ func (d *Document) Restore(state State) error {
 	}
 	if state.Page.Width <= 0 || state.Page.Height <= 0 {
 		return fmt.Errorf("page dimensions must be positive")
+	}
+	if state.Page.Width > maxRestoredPageWidth || state.Page.Height > maxRestoredPageHeight {
+		state.Page = state.Page.FitToWidth(maxRestoredPageWidth)
 	}
 	const validStyles = StyleBold | StyleItalic | StyleUnderline | StyleStrike
 	if state.ActiveStyle&^validStyles != 0 {
