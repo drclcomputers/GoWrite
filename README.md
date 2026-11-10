@@ -115,7 +115,15 @@ gowrite/
 │   ├── services/
 │   │   ├── document/     # paragraphs + styled runs + find/replace
 │   │   ├── ui/           # editor, start menu, dialogs
-│   │   └── uitheme/      # shared colours & styling
+│   │   └── uitheme/      # theme.go: every colour in the app lives here
 │   └── utils/
 └── README.md
 ```
+
+## Theming
+
+Every colour in GoWrite is defined in `internal/services/uitheme/theme.go`, and nowhere else. To restyle the app, edit the palette at the top of that file (one hex value per line); the widgets, status bars, help screen, heading colours and text cursor all follow.
+
+The file is organised as: palette → document roles → tcell colours → `{key}`-style tag markup → colour-picker swatches → helpers → widget stylers. When adding UI, use the names from that file (`uitheme.Panel`, `uitheme.Markup("{val}…{end}")`, …) instead of writing a colour inline.
+
+The colour-picker swatches (`uitheme.Palette`) are saved inside documents, so don't change their existing values.

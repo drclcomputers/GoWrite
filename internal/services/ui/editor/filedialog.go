@@ -153,7 +153,7 @@ func (e *Editor) showFileDialogWithReturn(mode fileDialogMode, afterSave func(),
 	updateList = func(path string) {
 		fileList.Clear()
 		currentPath = path
-		pathLabel.SetText(fmt.Sprintf("[#f0d090]Location:[::-] %s", utils.PrettyPath(path, "no")))
+		pathLabel.SetText(fmt.Sprintf(uitheme.Markup("{val}Location:{end} %s"), utils.PrettyPath(path, "no")))
 
 		if path != filepath.Dir(path) {
 			parent := filepath.Dir(path)
@@ -389,7 +389,7 @@ func (e *Editor) showFileDialogWithReturn(mode fileDialogMode, afterSave func(),
 		AddItem(topSection, 0, 1, true).
 		AddItem(fileList, 0, 1, false)
 	instructions := tview.NewTextView().
-		SetText(" [#f0d090]Alt+Shift+←/→[-] panels    [#f0d090]Enter[-] select    [#f0d090]Tab[-] buttons    [#f0d090]Esc[-] back").
+		SetText(uitheme.Markup(" {val}Alt+Shift+←/→{clear} panels    {val}Enter{clear} select    {val}Tab{clear} buttons    {val}Esc{clear} back")).
 		SetDynamicColors(true).
 		SetTextAlign(tview.AlignCenter)
 	container := tview.NewFlex().SetDirection(tview.FlexRow).

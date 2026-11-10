@@ -165,7 +165,7 @@ func (e *Editor) showSymbolGridWith(insert func(string), cancel func()) {
 				SetBackgroundColor(uitheme.Panel).
 				SetSelectedStyle(tcell.StyleDefault.
 					Background(uitheme.Btn).
-					Foreground(tcell.ColorWhite)).
+					Foreground(uitheme.BtnText)).
 				SetExpansion(1)
 			table.SetCell(r, c, cell)
 		}
@@ -186,7 +186,7 @@ func (e *Editor) showSymbolGridWith(insert func(string), cancel func()) {
 		r, c := table.GetSelection()
 		if r >= 0 && r < rows && c >= 0 && c < cols {
 			ch := symbolGrid[r][c]
-			status.SetText(fmt.Sprintf(" [#f0d090]%s[-]   U+%04X", ch, []rune(ch)[0]))
+			status.SetText(fmt.Sprintf(uitheme.Markup(" {val}%s{clear}   U+%04X"), ch, []rune(ch)[0]))
 		}
 	}
 	updateStatus()

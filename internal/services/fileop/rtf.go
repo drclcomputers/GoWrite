@@ -14,6 +14,7 @@ import (
 	"unicode/utf16"
 
 	"gowrite/internal/services/document"
+	"gowrite/internal/services/uitheme"
 )
 
 func ExportRTF(filename string, state document.State) error {
@@ -271,17 +272,17 @@ func effectiveRTFRun(style document.ParagraphStyle, run document.Run) (document.
 func paragraphDefaults(style document.ParagraphStyle) (document.Style, string, string) {
 	switch style {
 	case document.ParagraphTitle:
-		return document.StyleBold, "#f0d090", ""
+		return document.StyleBold, uitheme.HexTitle, ""
 	case document.ParagraphHeading1:
-		return document.StyleBold, "#5ec8c8", ""
+		return document.StyleBold, uitheme.HexHeading1, ""
 	case document.ParagraphHeading2:
-		return document.StyleBold, "#8ecae6", ""
+		return document.StyleBold, uitheme.HexHeading2, ""
 	case document.ParagraphHeading3:
 		return document.StyleBold, "", ""
 	case document.ParagraphQuote:
 		return document.StyleItalic, "", ""
 	case document.ParagraphCode:
-		return document.StyleNone, "#8ecae6", ""
+		return document.StyleNone, uitheme.HexCode, ""
 	default:
 		return document.StyleNone, "", ""
 	}

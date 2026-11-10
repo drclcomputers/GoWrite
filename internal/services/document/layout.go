@@ -11,15 +11,17 @@ import (
 
 	"github.com/mattn/go-runewidth"
 	"github.com/rivo/tview"
+
+	"gowrite/internal/services/uitheme"
 )
 
 const (
 	tabWidth   = 4
-	caretOpen  = "[-:-:-][black:#f0d090]"
+	caretOpen  = uitheme.TagCaret
 	caretClose = "[-:-:-]"
 	caretGlyph = "▌"
-	selFg      = "#e8ecf4"
-	selBg      = "#3e5c7a"
+	selFg      = uitheme.HexText
+	selBg      = uitheme.HexSelection
 )
 
 type visualLine struct {
@@ -174,17 +176,17 @@ func paragraphRunStyle(p Paragraph, run Run) (Style, string, string) {
 	case ParagraphTitle:
 		style |= StyleBold
 		if fg == "" {
-			fg = "#f0d090"
+			fg = uitheme.HexTitle
 		}
 	case ParagraphHeading1:
 		style |= StyleBold
 		if fg == "" {
-			fg = "#5ec8c8"
+			fg = uitheme.HexHeading1
 		}
 	case ParagraphHeading2:
 		style |= StyleBold
 		if fg == "" {
-			fg = "#8ecae6"
+			fg = uitheme.HexHeading2
 		}
 	case ParagraphHeading3:
 		style |= StyleBold
@@ -192,7 +194,7 @@ func paragraphRunStyle(p Paragraph, run Run) (Style, string, string) {
 		style |= StyleItalic
 	case ParagraphCode:
 		if fg == "" {
-			fg = "#8ecae6"
+			fg = uitheme.HexCode
 		}
 	}
 	return style, fg, bg

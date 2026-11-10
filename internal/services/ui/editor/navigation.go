@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"gowrite/internal/services/document"
 	"gowrite/internal/services/ui/navigation"
+	"gowrite/internal/services/uitheme"
 	"time"
 )
 
@@ -104,7 +105,7 @@ func (e *Editor) findNext(backwards bool) {
 func (e *Editor) flashStatus(msg string) {
 	e.flashSeq++
 	seq := e.flashSeq
-	e.Status.SetText(fmt.Sprintf(" [#f0d090]%s[::-]", msg))
+	e.Status.SetText(fmt.Sprintf(uitheme.Markup(" {val}%s{end}"), msg))
 	time.AfterFunc(3*time.Second, func() {
 		e.App.QueueUpdateDraw(func() {
 			if seq == e.flashSeq {

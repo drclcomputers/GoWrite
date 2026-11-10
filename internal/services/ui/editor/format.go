@@ -246,7 +246,7 @@ func (e *Editor) showFormatDialog() {
 	hint := tview.NewTextView().
 		SetDynamicColors(true).
 		SetTextAlign(tview.AlignCenter).
-		SetText(" [#f0d090]Tab[-] next   [#f0d090]Alt+Shift+←/→[-] section   [#f0d090]Esc[-] close")
+		SetText(uitheme.Markup(" {val}Tab{clear} next   {val}Alt+Shift+←/→{clear} section   {val}Esc{clear} close"))
 	hint.SetBackgroundColor(uitheme.Ink)
 
 	root := tview.NewFlex().SetDirection(tview.FlexRow).
@@ -319,12 +319,7 @@ func panelInBox(panel tview.Primitive) *tview.Pages {
 
 // makePanelButton creates a themed button used inside format panels.
 func makePanelButton(label string, fn func()) *tview.Button {
-	b := tview.NewButton(label).SetSelectedFunc(fn)
-	b.SetBackgroundColor(uitheme.Btn)
-	b.SetLabelColor(tcell.ColorWhite)
-	b.SetBackgroundColorActivated(uitheme.Amber)
-	b.SetLabelColorActivated(uitheme.Ink)
-	return b
+	return uitheme.StyleButton(tview.NewButton(label).SetSelectedFunc(fn))
 }
 
 // panelSpacer is a 1-cell box painted with the panel background.

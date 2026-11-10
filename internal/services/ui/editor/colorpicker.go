@@ -7,7 +7,6 @@ package editor
 
 import (
 	"fmt"
-	"gowrite/internal/services/document"
 	"gowrite/internal/services/uitheme"
 	"strconv"
 
@@ -43,7 +42,7 @@ func (e *Editor) showColorPickerWith(background bool, current string, selectColo
 	}
 
 	pages := tview.NewPages()
-	palette := document.ColorPalette
+	palette := uitheme.Palette
 	const cols = 5
 
 	// --- PAGE 1: GRID PALETTE ---
@@ -66,9 +65,9 @@ func (e *Editor) showColorPickerWith(background bool, current string, selectColo
 			cell.SetBackgroundColor(uitheme.Field)
 			cell.SetTextColor(uitheme.Text)
 		} else {
-			rgb := parseHexColor(c.Value)
+			rgb := uitheme.ParseHex(c.Value)
 			cell.SetBackgroundColor(rgb)
-			cell.SetTextColor(contrastColor(rgb))
+			cell.SetTextColor(uitheme.Contrast(rgb))
 		}
 		table.SetCell(row, col, cell)
 	}
@@ -91,7 +90,7 @@ func (e *Editor) showColorPickerWith(background bool, current string, selectColo
 	var r, g, b int64
 	startHex := current
 	if len(startHex) != 7 || startHex[0] != '#' {
-		startHex = "#000000"
+		startHex = uitheme.HexCustomStart
 	}
 	r, _ = strconv.ParseInt(startHex[1:3], 16, 0)
 	g, _ = strconv.ParseInt(startHex[3:5], 16, 0)
@@ -232,7 +231,7 @@ func (e *Editor) showColorPickerWith(background bool, current string, selectColo
 	var pickerModal tview.Primitive
 	applyCustom := func() {
 		color := hexInput.GetText()
-		if !validHexColor(color) {
+		if !uitheme.ValidHex(color) {
 			ShowErrorModal(e.App, pickerModal, "Enter a valid hex color such as #AABBCC.")
 			return
 		}
@@ -296,32 +295,4 @@ func (e *Editor) showColorPickerWith(background bool, current string, selectColo
 
 	pickerModal = centredModal(container, 62, 12)
 	e.App.SetRoot(pickerModal, true).SetFocus(table)
-}
-
-func validHexColor(value string) bool {
-	if len(value) != 7 || value[0] != '#' {
-		return false
-	}
-	_, err := strconv.ParseUint(value[1:], 16, 24)
-	return err == nil
-}
-
-func parseHexColor(s string) tcell.Color {
-	if len(s) != 7 || s[0] != '#' {
-		return tcell.ColorDefault
-	}
-	var r, g, b int
-	if _, err := fmt.Sscanf(s, "#%02x%02x%02x", &r, &g, &b); err != nil {
-		return tcell.ColorDefault
-	}
-	return tcell.NewRGBColor(int32(r), int32(g), int32(b))
-}
-
-func contrastColor(c tcell.Color) tcell.Color {
-	r, g, b := c.RGB()
-	lum := 0.299*float64(r) + 0.587*float64(g) + 0.114*float64(b)
-	if lum > 140 {
-		return tcell.ColorBlack
-	}
-	return tcell.ColorWhite
 }

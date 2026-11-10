@@ -6,12 +6,14 @@
 package editor
 
 import (
+	"gowrite/internal/services/uitheme"
+
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
 
 func (e *Editor) showHelp() {
-	helpText := `[#f0d090::b]EVERY DAY[-]
+	helpText := uitheme.Markup(`{h1}EVERY DAY{clear}
   Arrows           Move cursor
   Shift + Arrows   Select text
   Type             Insert text
@@ -25,7 +27,7 @@ func (e *Editor) showHelp() {
   ?                This help
   Esc              Save dialog (location, format, exit)
 
-[#7dcea0::b]STYLING[-]
+{h2}STYLING{clear}
   Alt + B          Toggle Bold
   Alt + I          Toggle Italic
   Alt + U          Toggle Underline
@@ -36,7 +38,7 @@ func (e *Editor) showHelp() {
   Alt + L / E / R  Align left / center / right
   Alt + Shift + P  Insert page break
 
-[#8ecae6::b]FORMAT SCREEN  (Alt+Enter)[-]
+{h3}FORMAT SCREEN  (Alt+Enter){clear}
   Style / Transform / Colors
   Paragraph        Title, headings, quote, code; alignment; space after (rows)
   Lists            numbered, lettered, bullets, checkboxes, roman
@@ -46,16 +48,16 @@ func (e *Editor) showHelp() {
                    Enter on a table edits a cell; at the table end it moves after it
   Page Setup       Page size, margins, header, footer, page numbers
 
-[#8ecae6::b]LESS OFTEN[-]  (Alt + the letter)
+{h3}LESS OFTEN{clear}  (Alt + the letter)
   O open          N new            G go to line       H replace
   Shift + C copy  Shift + X cut    Shift + V paste    Shift + A select all
   Z undo          Shift + Z redo
   F3 / F4         Find next / previous
 
-[#8aa0b8]Alt+Shift+←/→ selects whole words. Plain Alt+arrow is swallowed by the terminal.[-]
-Everything else is Alt, or a plain key.[-]
+{muted}Alt+Shift+←/→ selects whole words. Plain Alt+arrow is swallowed by the terminal.{clear}
+Everything else is Alt, or a plain key.{clear}
 
-[#5c6b7a]Esc closes this.[-]`
+{dim}Esc closes this.{clear}`)
 
 	textView := tview.NewTextView().
 		SetDynamicColors(true).
@@ -66,9 +68,9 @@ Everything else is Alt, or a plain key.[-]
 	textView.SetBorder(true).
 		SetTitle(" GoWrite  ·  Esc to close ").
 		SetTitleAlign(tview.AlignCenter).
-		SetTitleColor(tcell.NewRGBColor(240, 208, 144)).
-		SetBorderColor(tcell.NewRGBColor(70, 160, 170)).
-		SetBackgroundColor(tcell.NewRGBColor(14, 17, 26))
+		SetTitleColor(uitheme.Amber).
+		SetBorderColor(uitheme.Line).
+		SetBackgroundColor(uitheme.Ink)
 
 	textView.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		switch event.Key() {

@@ -65,7 +65,7 @@ func StartMenuUI(app *tview.Application) (StartMenuResult, *StartMenu) {
 	leftPanel := tview.NewFlex().SetDirection(tview.FlexRow)
 
 	title := tview.NewTextView().
-		SetText(fmt.Sprintf("[::b]GoWrite[::-] [yellow]v%s[::-]", utils.VER)).
+		SetText(fmt.Sprintf(uitheme.Markup("[::b]GoWrite[::-] {version}v%s{end}"), utils.VER)).
 		SetTextAlign(tview.AlignCenter).
 		SetTextStyle(tcell.StyleDefault.Background(uitheme.Panel)).
 		SetDynamicColors(true)
@@ -77,7 +77,7 @@ func StartMenuUI(app *tview.Application) (StartMenuResult, *StartMenu) {
 	newBtn := tview.NewTextView().
 		SetText(newDocButtonLabel).
 		SetTextAlign(tview.AlignCenter).
-		SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorLightGreen).Background(uitheme.Panel))
+		SetTextStyle(tcell.StyleDefault.Foreground(uitheme.BtnNewText).Background(uitheme.Panel))
 	newBtn.SetBorder(true).
 		SetBorderColor(uitheme.Ok).
 		SetBackgroundColor(uitheme.Panel)
@@ -86,7 +86,7 @@ func StartMenuUI(app *tview.Application) (StartMenuResult, *StartMenu) {
 	openBtn := tview.NewTextView().
 		SetText(openDocButtonLabel).
 		SetTextAlign(tview.AlignCenter).
-		SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorBlue).Background(uitheme.Panel))
+		SetTextStyle(tcell.StyleDefault.Foreground(uitheme.BtnOpenText).Background(uitheme.Panel))
 	openBtn.SetBorder(true).
 		SetBorderColor(uitheme.Line).
 		SetBackgroundColor(uitheme.Panel)
@@ -97,7 +97,7 @@ func StartMenuUI(app *tview.Application) (StartMenuResult, *StartMenu) {
 		SetTextAlign(tview.AlignCenter).
 		SetTextStyle(tcell.StyleDefault.Foreground(uitheme.Amber).Background(uitheme.Panel))
 	optionsBtn.SetBorder(true).
-		SetBorderColor(tcell.NewRGBColor(160, 130, 70)).
+		SetBorderColor(uitheme.AmberDim).
 		SetBackgroundColor(uitheme.Panel)
 	optionsBtn.SetScrollable(false)
 	optionsBtn.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
@@ -129,7 +129,7 @@ func StartMenuUI(app *tview.Application) (StartMenuResult, *StartMenu) {
 	recentList := tview.NewList()
 	uitheme.StyleList(recentList, "")
 	recentList.AddItem("No recent files", "", 0, nil)
-	recentList.SetSelectedTextColor(tcell.ColorWhite)
+	recentList.SetSelectedTextColor(uitheme.BtnText)
 
 	rightPanel.
 		AddItem(recentTitle, 3, 0, false).

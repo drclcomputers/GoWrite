@@ -60,11 +60,11 @@ func (e *Editor) showTableEditor(paragraph int, returnToFormat bool) {
 				format := table.CellFormats[ri][ci]
 				fg := uitheme.Text
 				if format.Foreground != "" {
-					fg = parseHexColor(format.Foreground)
+					fg = uitheme.ParseHex(format.Foreground)
 				}
 				bg := uitheme.Panel
 				if format.Background != "" {
-					bg = parseHexColor(format.Background)
+					bg = uitheme.ParseHex(format.Background)
 				}
 				attributes := tcell.AttrMask(0)
 				if format.Style&document.StyleBold != 0 ||

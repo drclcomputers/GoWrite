@@ -5,7 +5,11 @@
 
 package document
 
-import "strings"
+import (
+	"strings"
+
+	"gowrite/internal/services/uitheme"
+)
 
 func styleTags(s Style, fg, bg string) (open, close string) {
 	const reset = "[-:-:-]"
@@ -270,10 +274,10 @@ func (d *Document) StyleString() string {
 		parts = append(parts, "Strike")
 	}
 	if d.ActiveFg != "" {
-		parts = append(parts, "fg:"+ColorName(d.ActiveFg))
+		parts = append(parts, "fg:"+uitheme.ColorName(d.ActiveFg))
 	}
 	if d.ActiveBg != "" {
-		parts = append(parts, "bg:"+ColorName(d.ActiveBg))
+		parts = append(parts, "bg:"+uitheme.ColorName(d.ActiveBg))
 	}
 	parts = append(parts, AlignString(func() Align {
 		if d.CursorPara >= 0 && d.CursorPara < len(d.Paragraphs) {

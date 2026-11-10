@@ -153,13 +153,18 @@ func (e *Editor) refreshUI() {
 	style := e.Doc.StyleString()
 	page, pages := e.Doc.PageInfo()
 
-	e.TopBar.SetText(fmt.Sprintf(
-		" [#5ec8c8]Ln[::-] [#f0d090]%d[::-]  [#5ec8c8]Col[::-] [#f0d090]%d[::-]  [#5ec8c8]Page[::-] [#f0d090]%d/%d[::-]   [white]|[::-]   [#5ec8c8]Words:[::-] [#f0d090]%d[::-]  [#5ec8c8]Chars:[::-] [#f0d090]%d[::-]   [white]|[::-]   [#5ec8c8]Style[::-] [#ffffff]-[::-] [#f0d090]%s[::-]",
-		line, col, page, pages, words, chars, style,
-	))
+	e.TopBar.SetText(fmt.Sprintf(topBarFormat, line, col, page, pages, words, chars, style))
 
-	e.Status.SetText(" [#7dcea0]Document[::-]    [#f0d090]Alt+Enter[::-] [white]format[::-]    [#f0d090]?[::-] [white]help[::-]")
+	e.Status.SetText(statusHint)
 }
+
+// Status-line templates, expanded once at start-up.
+var (
+	topBarFormat = uitheme.Markup(" {key}Ln{end} {val}%d{end}  {key}Col{end} {val}%d{end}  {key}Page{end} {val}%d/%d{end}" +
+		"   {plain}|{end}   {key}Words:{end} {val}%d{end}  {key}Chars:{end} {val}%d{end}" +
+		"   {plain}|{end}   {key}Style{end} {bright}-{end} {val}%s{end}")
+	statusHint = uitheme.Markup(" {ok}Document{end}    {val}Alt+Enter{end} {plain}format{end}    {val}?{end} {plain}help{end}")
+)
 
 func (e *Editor) Mount() {
 	e.App.SetRoot(e.Root, true).SetFocus(e.View)
