@@ -18,7 +18,7 @@ import (
 const (
 	tabWidth   = 4
 	caretOpen  = uitheme.TagCaret
-	caretClose = uitheme.TagReset
+	caretClose = uitheme.TagPageReset
 	caretGlyph = "▌"
 	selFg      = uitheme.HexText
 	selBg      = uitheme.HexSelection
@@ -201,7 +201,7 @@ func paragraphRunStyle(p Paragraph, run Run) (Style, string, string) {
 }
 
 // writeRange writes the runes [from, to) of paragraph p with their styles.
-func writeRange(b *strings.Builder, p Paragraph, from, to, caret, selFrom, selTo int, formattingMarks bool) {
+func writeRange(b *strings.Builder, p Paragraph, from, to, caret, selFrom, selTo int, formattingMarks bool, pageReset, caretOpen, caretClose string) {
 	pos := 0
 	for _, run := range p.Runs {
 		style, fg, bg := paragraphRunStyle(p, run)
@@ -246,12 +246,12 @@ func writeRange(b *strings.Builder, p Paragraph, from, to, caret, selFrom, selTo
 					b.WriteString(caretClose)
 				}
 			case selFrom >= 0 && abs >= selFrom && rs+z <= selTo:
-				open, cl := styleTags(style, selFg, selBg)
+				open, cl := styleTags(style, selFg, selBg, pageReset)
 				b.WriteString(open)
 				b.WriteString(displayText(string(seg), style, formattingMarks))
 				b.WriteString(cl)
 			default:
-				open, cl := styleTags(style, fg, bg)
+				open, cl := styleTags(style, fg, bg, pageReset)
 				b.WriteString(open)
 				b.WriteString(displayText(string(seg), style, formattingMarks))
 				b.WriteString(cl)
@@ -262,6 +262,13 @@ func writeRange(b *strings.Builder, p Paragraph, from, to, caret, selFrom, selTo
 
 // render builds the tview-tagged text, page by page.
 func (d *Document) render(withCaret, formattingMarks bool) (string, int) {
+	pageBackground := d.Page.Background
+	if !uitheme.ValidHex(pageBackground) {
+		pageBackground = uitheme.HexPageBackground
+	}
+	pageReset := "[" + uitheme.HexText + ":" + pageBackground + "]"
+	caretOpen := pageReset + "[" + uitheme.HexInk + ":" + uitheme.HexAmber + "]"
+	caretClose := pageReset
 	if len(d.Paragraphs) == 0 {
 		if withCaret {
 			return caretOpen + caretGlyph + caretClose, 0
@@ -287,19 +294,19 @@ func (d *Document) render(withCaret, formattingMarks bool) (string, int) {
 	}
 	drawPageTop := func() {
 		writeMargin()
-		b.WriteString("┌" + strings.Repeat("─", ps.Width) + "┐\n")
+		b.WriteString(pageReset + "┌" + strings.Repeat("─", ps.Width) + "┐" + uitheme.TagEditorReset + "\n")
 	}
 	drawPageBottom := func() {
 		writeMargin()
-		b.WriteString("└" + strings.Repeat("─", ps.Width) + "┘\n")
+		b.WriteString(pageReset + "└" + strings.Repeat("─", ps.Width) + "┘" + uitheme.TagEditorReset + "\n")
 	}
 	blankRow := func() {
 		writeMargin()
-		b.WriteString("│" + strings.Repeat(" ", ps.Width) + "│\n")
+		b.WriteString(pageReset + "│" + strings.Repeat(" ", ps.Width) + "│" + uitheme.TagEditorReset + "\n")
 	}
 	textRow := func(plain string) {
 		writeMargin()
-		b.WriteString("│" + ml + tview.Escape(plain) + mr + "│\n")
+		b.WriteString(pageReset + "│" + ml + tview.Escape(plain) + mr + "│" + uitheme.TagEditorReset + "\n")
 	}
 
 	sp, so, ep, eo, selOK := d.selectionRange()
@@ -315,7 +322,7 @@ func (d *Document) render(withCaret, formattingMarks bool) (string, int) {
 	)
 
 	d.walk(g, pageWalker{
-		startPage: func(page int) {
+		startPage: func(page, _ int) {
 			drawPageTop()
 			if g.hdr {
 				textRow(d.runningLine(ps.Header, ps.PageNumbers, ps.PageNumbers.Where == NumHeader, page, pages, g.bodyW))
@@ -397,7 +404,7 @@ func (d *Document) render(withCaret, formattingMarks bool) (string, int) {
 				vEnd++
 			}
 
-			writeRange(&lineBuf, p, ln.Start, vEnd, caret, selFrom, selTo, formattingMarks)
+			writeRange(&lineBuf, p, ln.Start, vEnd, caret, selFrom, selTo, formattingMarks, pageReset, caretOpen, caretClose)
 			glyph := hasCaret && (caret < ln.Start || caret >= vEnd)
 			if glyph {
 				lineBuf.WriteString(caretOpen + caretGlyph + caretClose)
@@ -409,7 +416,7 @@ func (d *Document) render(withCaret, formattingMarks bool) (string, int) {
 					used++
 				}
 				if used+1 <= g.bodyW {
-					open, cl := styleTags(StyleNone, selFg, selBg)
+					open, cl := styleTags(StyleNone, selFg, selBg, pageReset)
 					lineBuf.WriteString(open + " " + cl)
 				}
 			}
@@ -433,7 +440,7 @@ func (d *Document) render(withCaret, formattingMarks bool) (string, int) {
 			}
 
 			writeMargin()
-			b.WriteString("│" + ml)
+			b.WriteString(pageReset + "│" + ml)
 			b.WriteString(lineBuf.String())
 
 			// Tags are zero-width, so wrapping to bodyW cannot overflow.
@@ -444,7 +451,7 @@ func (d *Document) render(withCaret, formattingMarks bool) (string, int) {
 			if markInRightMargin {
 				rightMargin = "¶" + strings.Repeat(" ", ps.MarginRight-1)
 			}
-			b.WriteString(rightMargin + "│\n")
+			b.WriteString(rightMargin + "│" + uitheme.TagEditorReset + "\n")
 		},
 	})
 
@@ -474,25 +481,34 @@ func (d *Document) StyledTextWithCursorAndMarks(formattingMarks bool) string {
 
 // CursorRow returns the visual screen row.
 func (d *Document) CursorRow() int {
+	row, _ := d.CursorRowAndPageTop()
+	return row
+}
+
+func (d *Document) CursorRowAndPageTop() (cursorRow, pageTop int) {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
 	var (
-		pi, res int
-		found   bool
-		rs      []rune
-		lines   []visualLine
+		pi, currentPageTop int
+		found              bool
+		rs                 []rune
+		lines              []visualLine
 	)
 	d.walk(d.geometry(), pageWalker{
-		para: func(i int, r []rune, l []visualLine) { pi, rs, lines = i, r, l },
+		startPage: func(_, row int) { currentPageTop = row },
+		para:      func(i int, r []rune, l []visualLine) { pi, rs, lines = i, r, l },
 		line: func(li, _, row int) {
 			if found {
 				return
 			}
-			res = row
-			found = pi == d.CursorPara && li == lineIndexFor(lines, min(max(d.CursorOff, 0), len(rs)))
+			if pi == d.CursorPara && li == lineIndexFor(lines, min(max(d.CursorOff, 0), len(rs))) {
+				cursorRow = row
+				pageTop = currentPageTop
+				found = true
+			}
 		},
 	})
-	return res
+	return cursorRow, pageTop
 }
 
 // Navigation on visual lines

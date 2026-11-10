@@ -76,6 +76,22 @@ func (e *Editor) showPageSetupWithClose(close func()) {
 		})
 	}
 
+	var pageModal tview.Primitive
+	var backgroundButton *tview.Button
+	form.AddButton("Page background: "+ps.Background, func() {
+		e.showColorPickerWith(true, ps.Background, func(color string) {
+			if color == "" {
+				color = uitheme.HexPageBackground
+			}
+			ps.Background = color
+			backgroundButton.SetLabel("Page background: " + color)
+			e.App.SetRoot(pageModal, true).SetFocus(backgroundButton)
+		}, func() {
+			e.App.SetRoot(pageModal, true).SetFocus(backgroundButton)
+		})
+	})
+	backgroundButton = form.GetButton(form.GetButtonCount() - 1)
+
 	// apply stores the form's settings; it reports whether margins had to shrink.
 	apply := func() bool {
 		ps.Width, ps.Height = document.GetDimensions(ps.Size, ps.Orientation)
@@ -98,5 +114,6 @@ func (e *Editor) showPageSetupWithClose(close func()) {
 	form.SetBorder(true)
 	escapeCloses(form, close)
 
-	e.App.SetRoot(centredModal(form, 52, 15), true).SetFocus(form)
+	pageModal = centredModal(form, 52, 15)
+	e.App.SetRoot(pageModal, true).SetFocus(form)
 }

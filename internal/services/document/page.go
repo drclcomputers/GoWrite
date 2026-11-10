@@ -5,7 +5,11 @@
 
 package document
 
-import "math"
+import (
+	"math"
+
+	"gowrite/internal/services/uitheme"
+)
 
 // PageSize represents standard paper sizes.
 type PageSize string
@@ -78,6 +82,7 @@ type PageSettings struct {
 	Orientation Orientation `json:"orientation"`
 	Width       int         `json:"width"`
 	Height      int         `json:"height"`
+	Background  string      `json:"background"`
 
 	MarginLeft   int `json:"margin_left"`
 	MarginRight  int `json:"margin_right"`
@@ -99,6 +104,9 @@ func (p PageSettings) hasFooter() bool {
 
 // Normalized clamps the margins so the text area keeps a usable size.
 func (p PageSettings) Normalized() PageSettings {
+	if !uitheme.ValidHex(p.Background) {
+		p.Background = uitheme.HexPageBackground
+	}
 	p.MarginLeft, p.MarginRight = max(p.MarginLeft, 0), max(p.MarginRight, 0)
 	p.MarginTop, p.MarginBottom = max(p.MarginTop, 0), max(p.MarginBottom, 0)
 
@@ -127,6 +135,7 @@ func DefaultA4Portrait() PageSettings {
 		Orientation:  Portrait,
 		Width:        w,
 		Height:       h,
+		Background:   uitheme.HexPageBackground,
 		MarginLeft:   6,
 		MarginRight:  6,
 		MarginTop:    2,

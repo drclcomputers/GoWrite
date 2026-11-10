@@ -295,6 +295,27 @@ func (d *Document) InsertPageBreak() {
 
 	para := d.Paragraphs[d.CursorPara]
 	paraLen := len([]rune(plainOf(para)))
+	if paraLen == 0 && para.Table == nil {
+		if d.CursorPara+1 < len(d.Paragraphs) && d.Paragraphs[d.CursorPara+1].PageBreak {
+			return
+		}
+		d.pushHistory()
+		next := Paragraph{
+			Runs:       []Run{{Text: "", Style: StyleNone}},
+			Align:      para.Align,
+			ParaStyle:  para.ParaStyle,
+			SpaceAfter: para.SpaceAfter,
+			PageBreak:  true,
+		}
+		insertAt := d.CursorPara + 1
+		d.Paragraphs = append(d.Paragraphs, Paragraph{})
+		copy(d.Paragraphs[insertAt+1:], d.Paragraphs[insertAt:len(d.Paragraphs)-1])
+		d.Paragraphs[insertAt] = next
+		d.CursorPara = insertAt
+		d.CursorOff = 0
+		d.Dirty = true
+		return
+	}
 	if d.CursorOff == 0 && para.PageBreak {
 		return
 	}
@@ -307,6 +328,9 @@ func (d *Document) InsertPageBreak() {
 	switch {
 	case d.CursorOff == 0:
 		d.Paragraphs[d.CursorPara].PageBreak = true
+		if d.CursorPara == 0 {
+			d.ensureLeadingPageBreakAnchor()
+		}
 	case d.CursorOff == paraLen && d.CursorPara+1 < len(d.Paragraphs):
 		d.CursorPara++
 		d.CursorOff = 0
@@ -332,6 +356,18 @@ func (d *Document) InsertPageBreak() {
 		d.CursorOff = 0
 	}
 	d.Dirty = true
+}
+
+func (d *Document) ensureLeadingPageBreakAnchor() {
+	if len(d.Paragraphs) == 0 || !d.Paragraphs[0].PageBreak {
+		return
+	}
+	d.Paragraphs = append(d.Paragraphs, Paragraph{})
+	copy(d.Paragraphs[1:], d.Paragraphs[:len(d.Paragraphs)-1])
+	d.Paragraphs[0] = Paragraph{Runs: []Run{{Text: "", Style: StyleNone}}}
+	if d.CursorPara >= 0 {
+		d.CursorPara++
+	}
 }
 
 // InsertText inserts plain text at the cursor (replacing any selection).

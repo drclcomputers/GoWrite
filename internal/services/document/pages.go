@@ -45,7 +45,7 @@ func (d *Document) geometry() pageGeo {
 // Rows count screen rows from the top of the first page.
 type pageWalker struct {
 	para      func(pi int, rs []rune, lines []visualLine)
-	startPage func(page int)
+	startPage func(page, row int)
 	line      func(li, page, row int)
 	space     func(page, row int)
 	endPage   func(page, used int, more bool)
@@ -60,7 +60,7 @@ func (d *Document) walk(g pageGeo, w pageWalker) int {
 		page++
 		used = 0
 		if w.startPage != nil {
-			w.startPage(page)
+			w.startPage(page, row)
 		}
 		row += 1 + g.top
 	}
@@ -87,7 +87,7 @@ func (d *Document) walk(g pageGeo, w pageWalker) int {
 
 	begin()
 	for pi, p := range d.Paragraphs {
-		if p.PageBreak && used > 0 {
+		if p.PageBreak {
 			end(true)
 			begin()
 		}

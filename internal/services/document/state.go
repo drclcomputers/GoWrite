@@ -97,6 +97,7 @@ func (d *Document) Restore(state State) error {
 	d.Page = state.Page.Normalized()
 	d.CursorPara = state.CursorPara
 	d.CursorOff = state.CursorOff
+	d.ensureLeadingPageBreakAnchor()
 	d.reflowTablesLocked()
 	d.ActiveStyle = state.ActiveStyle
 	d.ActiveFg = state.ActiveFg

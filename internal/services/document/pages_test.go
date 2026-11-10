@@ -159,6 +159,14 @@ func TestInsertPageBreakAtCursor(t *testing.T) {
 			want:       []string{"before", ""},
 			wantCursor: 1,
 		},
+		{
+			name:       "empty first paragraph",
+			text:       "",
+			para:       0,
+			off:        0,
+			want:       []string{"", ""},
+			wantCursor: 1,
+		},
 	}
 
 	for _, tt := range tests {
@@ -189,6 +197,65 @@ func TestInsertPageBreakAtCursor(t *testing.T) {
 				t.Errorf("PageInfo = %d/%d, want 2/2", cur, total)
 			}
 		})
+	}
+}
+
+func TestPageBreakAtDocumentStartCanNavigateBack(t *testing.T) {
+	d := New()
+	d.Page = testPage()
+	d.InsertPageBreak()
+
+	if d.CursorPara != 1 {
+		t.Fatalf("cursor paragraph = %d, want 1", d.CursorPara)
+	}
+	if current, total := d.PageInfo(); current != 2 || total != 2 {
+		t.Fatalf("page info after break = %d/%d, want 2/2", current, total)
+	}
+
+	d.MoveUp()
+	if d.CursorPara != 0 {
+		t.Fatalf("cursor paragraph after moving up = %d, want 0", d.CursorPara)
+	}
+	if current, total := d.PageInfo(); current != 1 || total != 2 {
+		t.Fatalf("page info after moving up = %d/%d, want 1/2", current, total)
+	}
+}
+
+func TestPageBreakAdvancesFromEveryEmptyPage(t *testing.T) {
+	d := New()
+	d.Page = testPage()
+	d.InsertPageBreak()
+	d.InsertPageBreak()
+
+	if current, total := d.PageInfo(); current != 3 || total != 3 {
+		t.Fatalf("page info after two breaks = %d/%d, want 3/3", current, total)
+	}
+	for wantPage := 2; wantPage >= 1; wantPage-- {
+		d.MoveUp()
+		if current, total := d.PageInfo(); current != wantPage || total != 3 {
+			t.Fatalf("page info moving back = %d/%d, want %d/3", current, total, wantPage)
+		}
+	}
+}
+
+func TestRestoreAddsAnchorForLegacyLeadingPageBreak(t *testing.T) {
+	d := New()
+	d.Page = testPage()
+	d.Paragraphs[0].Runs[0].Text = "content"
+	d.Paragraphs[0].PageBreak = true
+	state := d.Snapshot()
+
+	restored := New()
+	if err := restored.Restore(state); err != nil {
+		t.Fatal(err)
+	}
+	if restored.CursorPara != 1 || plainOf(restored.Paragraphs[0]) != "" {
+		t.Fatalf("restored leading page break lacks a navigable anchor: cursor=%d paragraphs=%+v",
+			restored.CursorPara, restored.Paragraphs)
+	}
+	restored.MoveUp()
+	if current, total := restored.PageInfo(); current != 1 || total != 2 {
+		t.Fatalf("restored page info after moving up = %d/%d, want 1/2", current, total)
 	}
 }
 

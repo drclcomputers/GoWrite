@@ -39,6 +39,12 @@ const (
 	HexPanel = "#121622" // dialog, form and list background
 )
 
+// Keep the editor surround and document page independently configurable.
+const (
+	HexEditorBackground = "#0e111a"
+	HexPageBackground   = "#000000"
+)
+
 // Text.
 const (
 	HexText  = "#e8ecf4" // primary text
@@ -82,10 +88,12 @@ const (
 	HexCode     = HexSky
 )
 
-// TagCaret draws the text cursor using the app's ink and amber colors.
+// TagCaret draws the text cursor using the page background and amber colors.
 const (
-	TagReset = "[" + HexText + ":" + HexInk + "]"
-	TagCaret = TagReset + "[" + HexInk + ":" + HexAmber + "]"
+	TagReset       = "[" + HexText + ":" + HexInk + "]"
+	TagEditorReset = "[" + HexText + ":" + HexEditorBackground + "]"
+	TagPageReset   = "[" + HexText + ":" + HexPageBackground + "]"
+	TagCaret       = TagPageReset + "[" + HexInk + ":" + HexAmber + "]"
 )
 
 // ---------------------------------------------------------------------------
@@ -93,18 +101,19 @@ const (
 // ---------------------------------------------------------------------------
 
 var (
-	Ink      = ParseHex(HexInk)
-	Field    = ParseHex(HexField)
-	Panel    = ParseHex(HexPanel)
-	Text     = ParseHex(HexText)
-	Label    = ParseHex(HexLabel)
-	Muted    = ParseHex(HexMuted)
-	Line     = ParseHex(HexLine)
-	Amber    = ParseHex(HexAmber)
-	AmberDim = ParseHex(HexAmberDim)
-	Btn      = ParseHex(HexBtn)
-	Ok       = ParseHex(HexOk)
-	Warn     = ParseHex(HexWarn)
+	Ink              = ParseHex(HexInk)
+	EditorBackground = ParseHex(HexEditorBackground)
+	Field            = ParseHex(HexField)
+	Panel            = ParseHex(HexPanel)
+	Text             = ParseHex(HexText)
+	Label            = ParseHex(HexLabel)
+	Muted            = ParseHex(HexMuted)
+	Line             = ParseHex(HexLine)
+	Amber            = ParseHex(HexAmber)
+	AmberDim         = ParseHex(HexAmberDim)
+	Btn              = ParseHex(HexBtn)
+	Ok               = ParseHex(HexOk)
+	Warn             = ParseHex(HexWarn)
 )
 
 // These use the terminal's own ANSI palette instead of RGB, so they follow the

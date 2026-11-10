@@ -52,7 +52,7 @@ func NewEditor(app *tview.Application, doc *document.Document, settings utils.Se
 		SetWrap(true).
 		SetScrollable(true).
 		SetRegions(false)
-	e.View.SetBackgroundColor(uitheme.Ink)
+	e.View.SetBackgroundColor(uitheme.EditorBackground)
 	e.View.SetBorder(true)
 	e.View.SetBorderColor(uitheme.Line)
 	e.View.SetTitleColor(uitheme.Amber)
@@ -73,7 +73,7 @@ func NewEditor(app *tview.Application, doc *document.Document, settings utils.Se
 		AddItem(e.TopBar, 1, 0, false).
 		AddItem(e.View, 0, 1, true).
 		AddItem(e.Status, 1, 0, false)
-	e.Root.SetBackgroundColor(uitheme.Ink)
+	e.Root.SetBackgroundColor(uitheme.EditorBackground)
 
 	e.Root.SetInputCapture(e.handleKeys)
 	e.View.SetInputCapture(e.handleKeys)
@@ -111,9 +111,9 @@ func (e *Editor) redraw() {
 	top, _ := e.View.GetScrollOffset()
 	e.View.SetText(e.Doc.StyledTextWithCursorAndMarks(e.showFormattingMarks))
 	if h > 0 {
-		row := e.Doc.CursorRow()
+		row, pageTop := e.Doc.CursorRowAndPageTop()
 		if row < top {
-			top = 0
+			top = pageTop
 		} else if row >= top+h {
 			top = row - h + 1
 		}

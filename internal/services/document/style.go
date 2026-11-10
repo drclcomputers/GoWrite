@@ -11,8 +11,7 @@ import (
 	"gowrite/internal/services/uitheme"
 )
 
-func styleTags(s Style, fg, bg string) (open, close string) {
-	const reset = uitheme.TagReset
+func styleTags(s Style, fg, bg, reset string) (open, close string) {
 	attrs := ""
 	if s&StyleBold != 0 {
 		attrs += "b"

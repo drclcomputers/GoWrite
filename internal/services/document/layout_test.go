@@ -5,6 +5,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"gowrite/internal/services/uitheme"
 )
 
 // tagRe matches the tview colour/style tags the renderer emits.
@@ -131,6 +133,22 @@ func TestCursorRow(t *testing.T) {
 	}
 }
 
+func TestCursorRowAndPageTop(t *testing.T) {
+	d := newTestDoc(30, "first", "second")
+	d.Page = testPage()
+	d.Paragraphs[1].PageBreak = true
+	d.CursorPara = 1
+
+	cursorRow, pageTop := d.CursorRowAndPageTop()
+	lines := plainLines(d)
+	if pageTop >= len(lines) || !strings.HasPrefix(lines[pageTop], "┌") {
+		t.Fatalf("page top row %d does not identify a page border", pageTop)
+	}
+	if cursorRow <= pageTop {
+		t.Fatalf("cursor row %d is not below page top row %d", cursorRow, pageTop)
+	}
+}
+
 func TestLineStartEnd(t *testing.T) {
 	d := newTestDoc(12, "hello world foo bar")
 	d.CursorOff = 8
@@ -233,6 +251,23 @@ func TestRenderEscapesTags(t *testing.T) {
 	d := newTestDoc(30, "[red]x")
 	if out := d.StyledText(); strings.Contains(out, "[red]") {
 		t.Errorf("literal [red] would be parsed as a colour tag: %q", out)
+	}
+}
+
+func TestRenderedPageUsesSeparateBackgroundRoles(t *testing.T) {
+	d := newTestDoc(30, "page text")
+	page := d.GetPageSettings()
+	page.Background = "#123456"
+	d.SetPageSettings(page)
+	out := d.StyledText()
+	if !strings.Contains(out, "[#e8ecf4:#123456]┌") {
+		t.Fatal("page border does not use the page background")
+	}
+	if !strings.Contains(out, uitheme.TagEditorReset+"\n") {
+		t.Fatal("page rendering does not restore the editor background")
+	}
+	if got := (PageSettings{}).Normalized().Background; got != uitheme.HexPageBackground {
+		t.Fatalf("default page background = %q, want %q", got, uitheme.HexPageBackground)
 	}
 }
 
