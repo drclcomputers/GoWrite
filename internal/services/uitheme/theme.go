@@ -3,21 +3,7 @@
 // This work is licensed under the terms of the MIT license.
 // For a copy, see <https://opensource.org/licenses/MIT>.
 
-// Package uitheme is the single place where every colour used by GoWrite lives.
-//
-// To restyle the app, edit this file and nothing else. No other file should
-// contain a colour literal (hex string, RGB triple, tcell.Color* constant or a
-// named tview colour tag); they should reference the names defined here.
-//
-// The file is laid out top to bottom:
-//
-//  1. Palette          raw hex values, one line per colour (start here to retheme)
-//  2. Roles            names for where palette colours are used in the document
-//  3. tcell colours    the palette as tcell.Color, for widget setters
-//  4. Markup           {key}-style shorthand for tview dynamic-colour tags
-//  5. Document swatches the colours offered by the Text/Background colour picker
-//  6. Helpers          hex parsing and contrast
-//  7. Widget stylers   Paint, StyleForm, StyleModal*, StyleList, StyleButton
+// Package uitheme defines GoWrite's colors and shared widget styles.
 package uitheme
 
 import (
@@ -28,59 +14,44 @@ import (
 	"github.com/rivo/tview"
 )
 
-// ---------------------------------------------------------------------------
-// 1. Palette
-// ---------------------------------------------------------------------------
-
-// Surfaces, darkest to lightest.
 const (
-	HexInk   = "#0e111a" // window and canvas background
-	HexField = "#0c0e16" // text-input background
-	HexPanel = "#121622" // dialog, form and list background
+	HexInk   = "#0e111a"
+	HexField = "#0c0e16"
+	HexPanel = "#121622"
 )
 
-// Keep the editor surround and document page independently configurable.
 const (
 	HexEditorBackground = "#0e111a"
 	HexPageBackground   = "#000000"
 )
 
-// Text.
 const (
-	HexText  = "#e8ecf4" // primary text
-	HexLabel = "#a8bcd6" // form labels and secondary text
-	HexMuted = "#8aa0b8" // hints
-	HexDim   = "#5c6b7a" // footnotes
-	HexWhite = "#ffffff" // pure white
+	HexText  = "#e8ecf4"
+	HexLabel = "#a8bcd6"
+	HexMuted = "#8aa0b8"
+	HexDim   = "#5c6b7a"
+	HexWhite = "#ffffff"
 )
 
-// Accents.
 const (
-	HexLine      = "#46a0aa" // borders
-	HexAmber     = "#f0d090" // titles, values, hotkeys, text cursor, active border
-	HexAmberDim  = "#a08246" // quieter amber border
-	HexCyan      = "#5ec8c8" // top-bar labels, Heading 1
-	HexSky       = "#8ecae6" // Heading 2, code, help headings
-	HexMint      = "#7dcea0" // status-bar label, help headings
-	HexBtn       = "#2463a6" // button and selected-row background
-	HexSelection = "#3e5c7a" // selected text in the document
+	HexLine      = "#46a0aa"
+	HexAmber     = "#f0d090"
+	HexAmberDim  = "#a08246"
+	HexCyan      = "#5ec8c8"
+	HexSky       = "#8ecae6"
+	HexMint      = "#7dcea0"
+	HexBtn       = "#2463a6"
+	HexSelection = "#3e5c7a"
 )
 
-// Feedback.
 const (
-	HexOk   = "#5ab48c" // success
-	HexWarn = "#ff4a00" // warning
+	HexOk   = "#5ab48c"
+	HexWarn = "#ff4a00"
 )
 
-// Starting value of the colour picker's "Custom..." form.
 const HexCustomStart = "#000000"
 
-// ---------------------------------------------------------------------------
-// 2. Roles
-// ---------------------------------------------------------------------------
-
-// Default colour of each paragraph style when a run has none of its own.
-// The on-screen renderer and the RTF writer both read these, so they always agree.
+// Default colors for paragraph styles.
 const (
 	HexTitle    = HexAmber
 	HexHeading1 = HexCyan
@@ -88,17 +59,12 @@ const (
 	HexCode     = HexSky
 )
 
-// TagCaret draws the text cursor using the page background and amber colors.
 const (
 	TagReset       = "[" + HexText + ":" + HexInk + "]"
 	TagEditorReset = "[" + HexText + ":" + HexEditorBackground + "]"
 	TagPageReset   = "[" + HexText + ":" + HexPageBackground + "]"
 	TagCaret       = TagPageReset + "[" + HexInk + ":" + HexAmber + "]"
 )
-
-// ---------------------------------------------------------------------------
-// 3. tcell colours
-// ---------------------------------------------------------------------------
 
 var (
 	Ink              = ParseHex(HexInk)
@@ -116,8 +82,6 @@ var (
 	Warn             = ParseHex(HexWarn)
 )
 
-// These use the terminal's own ANSI palette instead of RGB, so they follow the
-// user's terminal theme. Swap them for ParseHex(...) to pin them to the palette.
 var (
 	BtnText     = Text
 	BtnNewText  = ParseHex(HexMint)
@@ -140,23 +104,7 @@ func init() {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// 4. Markup
-// ---------------------------------------------------------------------------
-
-// Markup expands the {name} shorthands below into tview colour tags, so
-// strings never hold a colour themselves:
-//
-//	uitheme.Markup("{key}Ln{end} {val}%d{end}")
-//
-// Call it on constant templates only, never on user text.
-//
-//	{key}     label                  {h1}  help heading, amber
-//	{val}     value / hotkey         {h2}  help heading, mint
-//	{ok}      success label          {h3}  help heading, sky
-//	{plain}   primary text            {muted} hint     {dim} footnote
-//	{bright}  pure white             {version} version number
-//	{end}     reset attributes       {clear} reset colour
+// Markup replaces placeholders in constant UI templates with tview color tags.
 func Markup(s string) string { return markup.Replace(s) }
 
 var markup = strings.NewReplacer(
@@ -175,22 +123,13 @@ var markup = strings.NewReplacer(
 	"{clear}", "["+HexText+"]",
 )
 
-// ---------------------------------------------------------------------------
-// 5. Document swatches
-// ---------------------------------------------------------------------------
-
-// Swatch is one entry in the colour picker.
+// Swatch is an entry in the document color picker.
 type Swatch struct {
 	Name  string
 	Value string
 }
 
-// Palette lists the swatches offered by the Text and Background colour pickers.
-//
-// These values are written into saved documents, so they are deliberately
-// literal and not derived from the UI palette above: restyling the app must not
-// change what an existing document contains. Add new swatches freely, but do
-// not edit existing values.
+// Palette contains the saved-document color picker swatches.
 var Palette = []Swatch{
 	{"Default", ""},
 	{"Black", "#0e111a"},
@@ -236,11 +175,7 @@ func ColorName(val string) string {
 	return val
 }
 
-// ---------------------------------------------------------------------------
-// 6. Helpers
-// ---------------------------------------------------------------------------
-
-// ValidHex reports whether s is a colour in #RRGGBB form.
+// ValidHex reports whether s is in #RRGGBB form.
 func ValidHex(s string) bool {
 	if len(s) != 7 || s[0] != '#' {
 		return false
@@ -249,7 +184,7 @@ func ValidHex(s string) bool {
 	return err == nil
 }
 
-// ParseHex converts #RRGGBB to a tcell colour, falling back to Ink if s is invalid.
+// ParseHex converts #RRGGBB to a tcell color, defaulting to Ink if invalid.
 func ParseHex(s string) tcell.Color {
 	if !ValidHex(s) {
 		s = HexInk
@@ -258,7 +193,7 @@ func ParseHex(s string) tcell.Color {
 	return tcell.NewRGBColor(int32((v>>16)&0xff), int32((v>>8)&0xff), int32(v&0xff))
 }
 
-// Contrast returns Ink or Text, whichever is easier to read on c.
+// Contrast selects a readable text color for c.
 func Contrast(c tcell.Color) tcell.Color {
 	r, g, b := c.RGB()
 	lum := 0.299*float64(r) + 0.587*float64(g) + 0.114*float64(b)
@@ -267,10 +202,6 @@ func Contrast(c tcell.Color) tcell.Color {
 	}
 	return Text
 }
-
-// ---------------------------------------------------------------------------
-// 7. Widget stylers
-// ---------------------------------------------------------------------------
 
 type boxed interface {
 	SetBorder(bool) *tview.Box
@@ -281,12 +212,11 @@ type boxed interface {
 	SetBackgroundColor(tcell.Color) *tview.Box
 }
 
-// activatedButton is how a focused button looks.
 func activatedButton() tcell.Style {
 	return tcell.StyleDefault.Background(Amber).Foreground(Ink)
 }
 
-// Paint gives a panel the standard border and title.
+// Paint applies the standard panel style.
 func Paint(b boxed, title string) {
 	b.SetBorder(true)
 	if t := strings.TrimSpace(title); t != "" {
@@ -298,7 +228,7 @@ func Paint(b boxed, title string) {
 	b.SetBackgroundColor(Panel)
 }
 
-// StyleForm paints a form and its fields and buttons.
+// StyleForm applies the standard form style.
 func StyleForm(f *tview.Form, title string) *tview.Form {
 	Paint(f, title)
 	f.SetLabelColor(Label)
@@ -318,7 +248,7 @@ func StyleForm(f *tview.Form, title string) *tview.Form {
 	return f
 }
 
-// StyleButton paints a standalone button like the buttons inside a form.
+// StyleButton applies the standard button style.
 func StyleButton(b *tview.Button) *tview.Button {
 	b.SetBackgroundColor(Btn)
 	b.SetLabelColor(BtnText)
@@ -327,7 +257,7 @@ func StyleButton(b *tview.Button) *tview.Button {
 	return b
 }
 
-// StyleModal paints a message on a dark background; warnings get a rust border, successes green.
+// StyleModal applies the standard modal style.
 func StyleModal(m *tview.Modal, title string) *tview.Modal {
 	return tone(m, title, Btn)
 }
@@ -356,7 +286,7 @@ func tone(m *tview.Modal, title string, borderColor tcell.Color) *tview.Modal {
 	return m
 }
 
-// StyleList paints a list the same way as a form.
+// StyleList applies the standard list style.
 func StyleList(l *tview.List, title string) *tview.List {
 	Paint(l, title)
 	l.SetSelectedBackgroundColor(Btn)

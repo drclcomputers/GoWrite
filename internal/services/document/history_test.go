@@ -149,20 +149,24 @@ func TestPageBreakSurvivesEditsThatRebuildParagraphs(t *testing.T) {
 	d := New()
 	d.LoadText("hello")
 	d.InsertPageBreak()
+	if d.CursorPara != 1 || d.Paragraphs[0].PageBreak || !d.Paragraphs[1].PageBreak {
+		t.Fatalf("leading break = cursor %d, flags %v,%v; want cursor 1 and false,true",
+			d.CursorPara, d.Paragraphs[0].PageBreak, d.Paragraphs[1].PageBreak)
+	}
 	d.CursorOff = 2
 	d.InsertRune('\n')
-	if !d.Paragraphs[0].PageBreak || d.Paragraphs[1].PageBreak {
+	if !d.Paragraphs[1].PageBreak || d.Paragraphs[2].PageBreak {
 		t.Fatalf("break flags after Enter = %v,%v, want true,false",
-			d.Paragraphs[0].PageBreak, d.Paragraphs[1].PageBreak)
+			d.Paragraphs[1].PageBreak, d.Paragraphs[2].PageBreak)
 	}
 
 	// Deleting across paragraphs keeps the first paragraph's break.
 	d = New()
 	d.LoadText("one\ntwo")
 	d.InsertPageBreak()
-	selectRange(d, 0, 1, 1, 1)
+	selectRange(d, 1, 1, 2, 1)
 	d.DeleteSelection()
-	if !d.Paragraphs[0].PageBreak {
+	if !d.Paragraphs[1].PageBreak {
 		t.Fatal("deleting across paragraphs dropped the page break")
 	}
 }

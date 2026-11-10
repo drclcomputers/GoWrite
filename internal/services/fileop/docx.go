@@ -162,7 +162,11 @@ func docxDocumentXML(state document.State, headerID, footerID string) string {
 	widthMM, heightMM := rtfPageDimensions(page)
 	var b strings.Builder
 	b.WriteString(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`)
-	b.WriteString(`<w:document xmlns:w="` + wordNS + `" xmlns:r="` + officeRel + `"><w:body>`)
+	b.WriteString(`<w:document xmlns:w="` + wordNS + `" xmlns:r="` + officeRel + `">`)
+	if background, ok := docxColor(page.Background); ok {
+		fmt.Fprintf(&b, `<w:background w:color="%s"/>`, background)
+	}
+	b.WriteString(`<w:body>`)
 	for _, paragraph := range state.Paragraphs {
 		if paragraph.TablePart {
 			continue
@@ -200,15 +204,25 @@ func writeDOCXTable(b *strings.Builder, table document.Table, page document.Page
 	totalWidth := mmToTwips(widthMM) -
 		mmToTwips(float64(page.MarginLeft)*210/100) -
 		mmToTwips(float64(page.MarginRight)*210/100)
-	columns := len(table.Rows[0])
-	columnWidth := max(totalWidth/columns, 1)
+	columns := 0
+	for _, row := range table.Rows {
+		columns = max(columns, len(row))
+	}
+	if columns == 0 {
+		return
+	}
+	columnWidths := make([]int, columns)
+	for ci := range columnWidths {
+		columnWidths[ci] = max(totalWidth/columns, 1)
+	}
+	columnWidths[columns-1] += totalWidth % columns
 
-	b.WriteString(`<w:tbl><w:tblPr><w:tblBorders>`)
+	fmt.Fprintf(b, `<w:tbl><w:tblPr><w:tblW w:w="%d" w:type="dxa"/><w:tblLayout w:type="fixed"/><w:tblBorders>`, totalWidth)
 	for _, edge := range []string{"top", "left", "bottom", "right", "insideH", "insideV"} {
 		fmt.Fprintf(b, `<w:%s w:val="single" w:sz="4" w:space="0" w:color="808080"/>`, edge)
 	}
 	b.WriteString(`</w:tblBorders></w:tblPr><w:tblGrid>`)
-	for range columns {
+	for _, columnWidth := range columnWidths {
 		fmt.Fprintf(b, `<w:gridCol w:w="%d"/>`, columnWidth)
 	}
 	b.WriteString(`</w:tblGrid>`)
@@ -219,7 +233,11 @@ func writeDOCXTable(b *strings.Builder, table document.Table, page document.Page
 			if ri < len(table.CellFormats) && ci < len(table.CellFormats[ri]) {
 				format = table.CellFormats[ri][ci]
 			}
-			fmt.Fprintf(b, `<w:tc><w:tcPr><w:tcW w:w="%d" w:type="dxa"/></w:tcPr>`, columnWidth)
+			fmt.Fprintf(b, `<w:tc><w:tcPr><w:tcW w:w="%d" w:type="dxa"/>`, columnWidths[ci])
+			if color, ok := docxColor(format.Background); ok {
+				fmt.Fprintf(b, `<w:shd w:val="clear" w:color="auto" w:fill="%s"/>`, color)
+			}
+			b.WriteString(`</w:tcPr>`)
 			writeDOCXParagraph(b, document.Paragraph{
 				Align:     format.Alignment,
 				ParaStyle: format.ParagraphStyle,
@@ -227,7 +245,6 @@ func writeDOCXTable(b *strings.Builder, table document.Table, page document.Page
 					Text:  cell,
 					Style: format.Style,
 					Fg:    format.Foreground,
-					Bg:    format.Background,
 				}},
 			})
 			b.WriteString(`</w:tc>`)
@@ -441,6 +458,16 @@ func docxColor(value string) (string, bool) {
 	return strings.ToUpper(value[1:]), true
 }
 
+func parseDOCXColor(value string) string {
+	if len(value) != 6 {
+		return ""
+	}
+	if _, err := strconv.ParseUint(value, 16, 24); err != nil {
+		return ""
+	}
+	return "#" + strings.ToLower(value)
+}
+
 func xmlText(value string) string {
 	return html.EscapeString(value)
 }
@@ -583,6 +610,7 @@ func parseDOCXDocument(data []byte) (parsedDOCXDocument, error) {
 	var paragraph *document.Paragraph
 	var run *document.Run
 	inPPr, inRPr, inText := false, false, false
+	inTcPr := false
 	inSection := false
 	var width, height int
 	orientation := document.Portrait
@@ -593,6 +621,7 @@ func parseDOCXDocument(data []byte) (parsedDOCXDocument, error) {
 	var tableRowFormats []document.TableCellFormat
 	var cellParagraphs []document.Paragraph
 	inTableCell := false
+	cellBackground := ""
 
 	for {
 		token, err := decoder.Token()
@@ -620,6 +649,11 @@ func parseDOCXDocument(data []byte) (parsedDOCXDocument, error) {
 				if tableDepth == 1 {
 					inTableCell = true
 					cellParagraphs = nil
+					cellBackground = ""
+				}
+			case "tcPr":
+				if tableDepth > 0 && inTableCell {
+					inTcPr = true
 				}
 			case "p":
 				paragraph = &document.Paragraph{Align: document.AlignLeft}
@@ -676,15 +710,13 @@ func parseDOCXDocument(data []byte) (parsedDOCXDocument, error) {
 				}
 			case "color":
 				if run != nil && inRPr {
-					if color := attrValue(value.Attr, "val"); len(color) == 6 {
-						run.Fg = "#" + strings.ToLower(color)
-					}
+					run.Fg = parseDOCXColor(attrValue(value.Attr, "val"))
 				}
 			case "shd":
 				if run != nil && inRPr {
-					if color := attrValue(value.Attr, "fill"); len(color) == 6 && color != "auto" {
-						run.Bg = "#" + strings.ToLower(color)
-					}
+					run.Bg = parseDOCXColor(attrValue(value.Attr, "fill"))
+				} else if inTcPr {
+					cellBackground = parseDOCXColor(attrValue(value.Attr, "fill"))
 				}
 			case "highlight":
 				if run != nil && inRPr {
@@ -706,6 +738,10 @@ func parseDOCXDocument(data []byte) (parsedDOCXDocument, error) {
 				}
 			case "sectPr":
 				inSection = true
+			case "background":
+				if color := parseDOCXColor(attrValue(value.Attr, "color")); color != "" {
+					result.page.Background = color
+				}
 			case "pgSz":
 				if inSection {
 					width, _ = strconv.Atoi(attrValue(value.Attr, "w"))
@@ -740,6 +776,8 @@ func parseDOCXDocument(data []byte) (parsedDOCXDocument, error) {
 				inText = false
 			case "pPr":
 				inPPr = false
+			case "tcPr":
+				inTcPr = false
 			case "rPr":
 				inRPr = false
 			case "r":
@@ -780,9 +818,13 @@ func parseDOCXDocument(data []byte) (parsedDOCXDocument, error) {
 							format.Background = first.Runs[0].Bg
 						}
 					}
+					if cellBackground != "" {
+						format.Background = cellBackground
+					}
 					tableRowFormats = append(tableRowFormats, format)
 					inTableCell = false
 					cellParagraphs = nil
+					cellBackground = ""
 				}
 			case "tr":
 				if tableDepth == 1 && len(tableRow) > 0 {
@@ -815,8 +857,10 @@ func parseDOCXDocument(data []byte) (parsedDOCXDocument, error) {
 			}
 		}
 	}
+	pageBackground := result.page.Background
 	if width > 0 && height > 0 {
 		result.page = pageFromDOCXDimensions(width, height, orientation)
+		result.page.Background = pageBackground
 	}
 	if marginLeft >= 0 {
 		result.page.MarginLeft = twipsToColumns(marginLeft)

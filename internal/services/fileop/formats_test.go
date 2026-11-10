@@ -192,6 +192,7 @@ func TestDOCXRoundTripPreservesSupportedDocumentContent(t *testing.T) {
 	doc.Paragraphs[1].Runs[0].Bg = "#abcdef"
 	page := doc.GetPageSettings()
 	page.Size, page.Orientation = document.SizeLegal, document.Landscape
+	page.Background = "#4a5b6c"
 	page.Width, page.Height = document.GetDimensions(page.Size, page.Orientation)
 	page.Footer.Center = "{title}"
 	page.PageNumbers = document.PageNumbers{
@@ -219,6 +220,7 @@ func TestDOCXRoundTripPreservesSupportedDocumentContent(t *testing.T) {
 		t.Fatalf("DOCX round trip lost paragraph formatting: %#v", state)
 	}
 	if state.Page.Size != document.SizeLegal || state.Page.Orientation != document.Landscape ||
+		state.Page.Background != "#4a5b6c" ||
 		state.Page.Footer.Center != "DOCX round trip" ||
 		state.Page.PageNumbers.Where != document.NumFooter ||
 		state.Page.PageNumbers.Align != document.AlignCenter ||
@@ -281,7 +283,7 @@ func TestDOCXExportWritesStructuredTable(t *testing.T) {
 	table.Rows[0][0], table.Rows[0][1] = "left", "right"
 	table.EnsureCellFormats()
 	table.CellFormats[0][0] = document.TableCellFormat{
-		Style: document.StyleBold, Foreground: "#123456",
+		Style: document.StyleBold, Foreground: "#123456", Background: "#abcdef",
 		ParagraphStyle: document.ParagraphHeading2, Alignment: document.AlignRight,
 	}
 	if err := doc.UpdateTableAt(paragraph, table); err != nil {
@@ -313,8 +315,16 @@ func TestDOCXExportWritesStructuredTable(t *testing.T) {
 		if !strings.Contains(xml, "<w:tbl>") || !strings.Contains(xml, "<w:tc>") ||
 			!strings.Contains(xml, "left") || !strings.Contains(xml, "right") ||
 			!strings.Contains(xml, `<w:pStyle w:val="Heading2"/>`) ||
-			!strings.Contains(xml, `<w:color w:val="123456"/>`) {
+			!strings.Contains(xml, `<w:color w:val="123456"/>`) ||
+			!strings.Contains(xml, `<w:tblLayout w:type="fixed"/>`) ||
+			!strings.Contains(xml, `<w:shd w:val="clear" w:color="auto" w:fill="ABCDEF"/>`) {
 			t.Fatalf("DOCX table structure missing from document.xml: %s", xml)
+		}
+		tcProps := strings.Index(xml, "<w:tcPr>")
+		cellShading := strings.Index(xml, `<w:shd w:val="clear" w:color="auto" w:fill="ABCDEF"/>`)
+		cellParagraph := strings.Index(xml, "<w:p>")
+		if tcProps < 0 || cellShading < tcProps || cellShading > cellParagraph {
+			t.Fatalf("table background is not encoded as cell shading: %s", xml)
 		}
 		loaded, err := LoadDOCX(filename)
 		if err != nil {
@@ -322,6 +332,7 @@ func TestDOCXExportWritesStructuredTable(t *testing.T) {
 		}
 		format := loaded.Paragraphs[0].Table.CellFormats[0][0]
 		if format.Style&document.StyleBold == 0 || format.Foreground != "#123456" ||
+			format.Background != "#abcdef" ||
 			format.ParagraphStyle != document.ParagraphHeading2 || format.Alignment != document.AlignRight {
 			t.Fatalf("DOCX table formatting not restored: %#v", format)
 		}
