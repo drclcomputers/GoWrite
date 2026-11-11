@@ -47,6 +47,10 @@ func LoadNative(filename string) (fileop.GDoc, error) {
 	return fileop.LoadGDoc(filename)
 }
 
+func SaveRecovery(filename string, state document.State, showFormattingMarks bool) error {
+	return fileop.SaveRecoveryGDoc(filename, state, showFormattingMarks)
+}
+
 func LoadWord(filename string) (document.State, error) {
 	return fileop.LoadDOCX(filename)
 }

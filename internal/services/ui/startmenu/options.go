@@ -35,6 +35,7 @@ func ShowOptions(app *tview.Application, returnTo, returnFocus tview.Primitive) 
 	marginRight := newMarginField("Right margin (columns):")
 	marginTop := newMarginField("Top margin (rows):")
 	marginBottom := newMarginField("Bottom margin (rows):")
+	autosaveMinutes := newAutosaveField()
 	saveFormat := tview.NewDropDown().SetLabel("Default save format:")
 	formatOptions := []string{
 		".gdoc - GoWrite native document",
@@ -52,6 +53,7 @@ func ShowOptions(app *tview.Application, returnTo, returnFocus tview.Primitive) 
 		marginRight.SetText(strconv.Itoa(values.MarginRight))
 		marginTop.SetText(strconv.Itoa(values.MarginTop))
 		marginBottom.SetText(strconv.Itoa(values.MarginBottom))
+		autosaveMinutes.SetText(strconv.Itoa(values.AutosaveMinutes))
 		saveFormat.SetCurrentOption(optionIndex(saveFormats, values.DefaultSaveFormat))
 		formattingMarks.SetChecked(values.ShowFormattingMarks)
 	}
@@ -63,6 +65,7 @@ func ShowOptions(app *tview.Application, returnTo, returnFocus tview.Primitive) 
 	form.AddFormItem(marginRight)
 	form.AddFormItem(marginTop)
 	form.AddFormItem(marginBottom)
+	form.AddFormItem(autosaveMinutes)
 	form.AddFormItem(saveFormat)
 	form.AddFormItem(formattingMarks)
 
@@ -81,7 +84,7 @@ func ShowOptions(app *tview.Application, returnTo, returnFocus tview.Primitive) 
 	}
 
 	form.AddButton("Save", func() {
-		next, err := readOptions(pageSize, orientation, marginLeft, marginRight, marginTop, marginBottom, saveFormat, formattingMarks)
+		next, err := readOptions(pageSize, orientation, marginLeft, marginRight, marginTop, marginBottom, autosaveMinutes, saveFormat, formattingMarks)
 		if err != nil {
 			showError(err.Error())
 			return
@@ -120,6 +123,7 @@ func ShowOptions(app *tview.Application, returnTo, returnFocus tview.Primitive) 
 func readOptions(
 	pageSize, orientation *tview.DropDown,
 	marginLeft, marginRight, marginTop, marginBottom *tview.InputField,
+	autosaveMinutes *tview.InputField,
 	saveFormat *tview.DropDown,
 	formattingMarks *tview.Checkbox,
 ) (utils.Settings, error) {
@@ -135,7 +139,11 @@ func readOptions(
 	settings.DefaultPageSize = pageSizes[sizeIndex]
 	settings.DefaultOrientation = orientations[orientationIndex]
 	settings.DefaultSaveFormat = saveFormats[formatIndex]
-	var err error
+	autosave, err := strconv.Atoi(strings.TrimSpace(autosaveMinutes.GetText()))
+	if err != nil || autosave < 1 || autosave > 15 {
+		return settings, fmt.Errorf("autosave interval must be a number from 1 to 15 minutes")
+	}
+	settings.AutosaveMinutes = autosave
 	if settings.MarginLeft, err = readMargin("Left", marginLeft); err != nil {
 		return settings, err
 	}
@@ -169,6 +177,18 @@ func newMarginField(label string) *tview.InputField {
 				return len(text) <= 3
 			}
 			return ch >= '0' && ch <= '9' && len(text) <= 2
+		})
+}
+
+func newAutosaveField() *tview.InputField {
+	return tview.NewInputField().
+		SetLabel("Autosave every (minutes):").
+		SetFieldWidth(3).
+		SetAcceptanceFunc(func(text string, ch rune) bool {
+			if ch == 0 {
+				return len(text) <= 2
+			}
+			return ch >= '0' && ch <= '9' && len(text) <= 1
 		})
 }
 

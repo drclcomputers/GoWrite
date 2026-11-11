@@ -23,6 +23,7 @@ type Settings struct {
 	MarginBottom        int    `json:"margin_bottom"`
 	DefaultSaveFormat   string `json:"default_save_format"`
 	ShowFormattingMarks bool   `json:"show_formatting_marks"`
+	AutosaveMinutes     int    `json:"autosave_minutes"`
 }
 
 func DefaultSettings() Settings {
@@ -35,6 +36,7 @@ func DefaultSettings() Settings {
 		MarginBottom:        2,
 		DefaultSaveFormat:   ".gdoc",
 		ShowFormattingMarks: false,
+		AutosaveMinutes:     5,
 	}
 }
 
@@ -54,6 +56,9 @@ func LoadSettings() (Settings, error) {
 	var settings Settings
 	if err := json.Unmarshal(data, &settings); err != nil {
 		return defaults, fmt.Errorf("parse settings: %w", err)
+	}
+	if settings.AutosaveMinutes == 0 {
+		settings.AutosaveMinutes = defaults.AutosaveMinutes
 	}
 	if err := settings.Validate(); err != nil {
 		return defaults, fmt.Errorf("invalid settings: %w", err)
@@ -111,7 +116,18 @@ func (s Settings) Validate() error {
 	default:
 		return fmt.Errorf("unsupported default save format %q", s.DefaultSaveFormat)
 	}
+	if s.AutosaveMinutes < 1 || s.AutosaveMinutes > 15 {
+		return fmt.Errorf("autosave interval must be from 1 to 15 minutes")
+	}
 	return nil
+}
+
+func RecoveryPath() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("determine home directory: %w", err)
+	}
+	return filepath.Join(home, ".gowrite", "~temp~.godoc"), nil
 }
 
 func settingsPath() (string, error) {

@@ -364,6 +364,20 @@ func TestFitToWidthUsesA4ProportionsAndMinimumDimensions(t *testing.T) {
 	}
 }
 
+func TestNarrowViewportFitsPageGeometryWithoutChangingSettings(t *testing.T) {
+	d := New()
+	d.SetDisplayWidth(40)
+	before := d.GetPageSettings()
+
+	geometry := d.geometry()
+	if geometry.ps.Width != 38 {
+		t.Fatalf("display page width = %d, want 38", geometry.ps.Width)
+	}
+	if d.GetPageSettings() != before {
+		t.Fatalf("render geometry changed saved page settings: got %+v, want %+v", d.GetPageSettings(), before)
+	}
+}
+
 func TestRestoreBoundsExtremePageDimensions(t *testing.T) {
 	state := New().Snapshot()
 	maxInt := int(^uint(0) >> 1)

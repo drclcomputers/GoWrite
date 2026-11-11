@@ -33,6 +33,14 @@ type EditorState struct {
 }
 
 func SaveGDoc(filename string, state document.State, showFormattingMarks bool) error {
+	return saveGDoc(filename, state, showFormattingMarks, 0o755, 0o644)
+}
+
+func SaveRecoveryGDoc(filename string, state document.State, showFormattingMarks bool) error {
+	return saveGDoc(filename, state, showFormattingMarks, 0o700, 0o600)
+}
+
+func saveGDoc(filename string, state document.State, showFormattingMarks bool, dirMode, fileMode os.FileMode) error {
 	file := GDoc{
 		Format:   "gowrite",
 		Version:  gdocVersion,
@@ -43,7 +51,7 @@ func SaveGDoc(filename string, state document.State, showFormattingMarks bool) e
 	if err != nil {
 		return fmt.Errorf("encode native document: %w", err)
 	}
-	return writeAtomic(filename, func(w io.Writer) error {
+	return writeAtomicWithMode(filename, dirMode, fileMode, func(w io.Writer) error {
 		gz := gzip.NewWriter(w)
 		if _, err := gz.Write(data); err != nil {
 			_ = gz.Close()
@@ -103,8 +111,12 @@ func readNativePayload(reader io.Reader, limit int64) ([]byte, error) {
 }
 
 func writeAtomic(filename string, write func(io.Writer) error) error {
+	return writeAtomicWithMode(filename, 0o755, 0o644, write)
+}
+
+func writeAtomicWithMode(filename string, dirMode, fileMode os.FileMode, write func(io.Writer) error) error {
 	dir := filepath.Dir(filename)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, dirMode); err != nil {
 		return fmt.Errorf("create directory %s: %w", dir, err)
 	}
 	file, err := os.CreateTemp(dir, "."+filepath.Base(filename)+".tmp-*")
@@ -114,7 +126,7 @@ func writeAtomic(filename string, write func(io.Writer) error) error {
 	tempName := file.Name()
 	defer os.Remove(tempName)
 
-	if err := file.Chmod(0o644); err != nil {
+	if err := file.Chmod(fileMode); err != nil {
 		_ = file.Close()
 		return fmt.Errorf("set file permissions: %w", err)
 	}

@@ -6,6 +6,7 @@
 package document
 
 import (
+	"math"
 	"strconv"
 	"strings"
 	"unicode"
@@ -28,6 +29,12 @@ func (d *Document) geometry() pageGeo {
 		ps = DefaultA4Portrait()
 	}
 	ps = ps.Normalized()
+	if d.DisplayWidth > 0 && ps.Width > max(minPageWidth, d.DisplayWidth-2) {
+		width := max(minPageWidth, d.DisplayWidth-2)
+		height := max(minPageHeight, int(math.Round(float64(ps.Height)*float64(width)/float64(ps.Width))))
+		ps.Width, ps.Height = width, height
+		ps = ps.Normalized()
+	}
 	g := pageGeo{ps: ps, hdr: ps.hasHeader(), ftr: ps.hasFooter()}
 	g.top, g.bottom = ps.MarginTop, ps.MarginBottom
 	if g.hdr {

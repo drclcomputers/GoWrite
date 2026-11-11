@@ -159,8 +159,9 @@ The start-screen **Options** form controls defaults for new documents:
 - Page margins
 - Default save format
 - Whether formatting marks are shown
+- Autosave interval (1–15 minutes; defaults to 5)
 
-Settings are stored at `~/.gowrite/settings.json`. Page background and other page settings belong to each document and can be changed from **Page Setup**.
+Settings are stored at `~/.gowrite/settings.json`. Unsaved work is periodically written to `~/.gowrite/~temp~.godoc`; on the next launch, GoWrite asks whether to reopen or discard the recovery copy. Page background and other page settings belong to each document and can be changed from **Page Setup**.
 
 The shared UI palette is defined in `internal/services/uitheme/theme.go`.
 

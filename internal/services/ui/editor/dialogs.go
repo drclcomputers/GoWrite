@@ -45,6 +45,10 @@ func (e *Editor) confirmUnsavedChanges(message string, action func(), returnTo, 
 			case "Save":
 				e.saveBeforeAction(action, returnTo, returnFocus)
 			case "Don't Save":
+				if err := e.clearRecovery(); err != nil {
+					ShowErrorModal(e.App, returnTo, "Could not discard the recovery copy: "+err.Error())
+					return
+				}
 				action()
 			default:
 				e.App.SetRoot(returnTo, true).SetFocus(returnFocus)
@@ -93,6 +97,10 @@ func (e *Editor) newDocument() {
 			AddButtons([]string{"Discard", "Cancel"}).
 			SetDoneFunc(func(buttonIndex int, buttonLabel string) {
 				if buttonLabel == "Discard" {
+					if err := e.clearRecovery(); err != nil {
+						ShowErrorModal(e.App, e.Root, "Could not discard the recovery copy: "+err.Error())
+						return
+					}
 					e.Doc = document.New()
 					applyDocumentDefaults(e.Doc, settings)
 					e.showFormattingMarks = settings.ShowFormattingMarks
@@ -107,6 +115,10 @@ func (e *Editor) newDocument() {
 			})
 		uitheme.StyleModalWarn(modal, "New Document")
 		e.App.SetRoot(modal, true).SetFocus(modal)
+		return
+	}
+	if err := e.clearRecovery(); err != nil {
+		ShowErrorModal(e.App, e.Root, "Could not clear the recovery copy: "+err.Error())
 		return
 	}
 	e.Doc = document.New()

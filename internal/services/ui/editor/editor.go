@@ -8,9 +8,14 @@ package editor
 import (
 	"fmt"
 	"gowrite/internal/services/document"
+	fileui "gowrite/internal/services/ui/file"
 	"gowrite/internal/services/uitheme"
 	"gowrite/internal/utils"
+	"log"
 	"path/filepath"
+	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -25,10 +30,17 @@ type Editor struct {
 	Status *tview.TextView
 
 	lastW, lastH           int
-	lastScreenWidth        int
 	flashSeq               int
 	showFormattingMarks    bool
 	defaultFormattingMarks bool
+	autosaveInterval       time.Duration
+	autosaveStop           chan struct{}
+	autosaveStopOnce       sync.Once
+	autosaveWorkers        sync.WaitGroup
+	autosaveBusy           atomic.Bool
+	recoveryGeneration     atomic.Uint64
+	recoveryMu             sync.Mutex
+	recoveryPath           string
 }
 
 func NewEditor(app *tview.Application, doc *document.Document, settings utils.Settings) *Editor {
@@ -38,6 +50,7 @@ func NewEditor(app *tview.Application, doc *document.Document, settings utils.Se
 		Doc:                    doc,
 		showFormattingMarks:    settings.ShowFormattingMarks,
 		defaultFormattingMarks: settings.ShowFormattingMarks,
+		autosaveInterval:       time.Duration(settings.AutosaveMinutes) * time.Minute,
 	}
 
 	// Top Bar
@@ -79,11 +92,8 @@ func NewEditor(app *tview.Application, doc *document.Document, settings utils.Se
 	e.Root.SetInputCapture(e.handleKeys)
 	e.View.SetInputCapture(e.handleKeys)
 
-	app.SetAfterDrawFunc(func(screen tcell.Screen) {
+	app.SetAfterDrawFunc(func(_ tcell.Screen) {
 		_, _, w, h := e.View.GetInnerRect()
-		if screenWidth, _ := screen.Size(); screenWidth > 0 {
-			e.lastScreenWidth = screenWidth
-		}
 		if w == e.lastW && h == e.lastH {
 			return
 		}
@@ -93,22 +103,6 @@ func NewEditor(app *tview.Application, doc *document.Document, settings utils.Se
 
 	e.redraw()
 	return e
-}
-
-func (e *Editor) terminalPageWidth() int {
-	if e.lastScreenWidth > 0 {
-		return max(10, e.lastScreenWidth-6)
-	}
-	if e.View != nil {
-		_, _, width, _ := e.View.GetInnerRect()
-		if width > 0 {
-			return max(10, width-2)
-		}
-	}
-	if e.Doc != nil && e.Doc.DisplayWidth > 0 {
-		return max(10, e.Doc.DisplayWidth-2)
-	}
-	return 78
 }
 
 func applyDocumentDefaults(doc *document.Document, settings utils.Settings) {
@@ -188,4 +182,89 @@ var (
 
 func (e *Editor) Mount() {
 	e.App.SetRoot(e.Root, true).SetFocus(e.View)
+	e.startAutosave()
+}
+
+func (e *Editor) startAutosave() {
+	if e.autosaveInterval <= 0 {
+		return
+	}
+	e.autosaveStop = make(chan struct{})
+	go func() {
+		ticker := time.NewTicker(e.autosaveInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				go e.App.QueueUpdateDraw(func() { e.autosaveNow() })
+			case <-e.autosaveStop:
+				return
+			}
+		}
+	}()
+}
+
+func (e *Editor) autosaveNow() {
+	if e.recoveryPath == "" {
+		return
+	}
+	if !e.Doc.IsDirty() {
+		if err := e.clearRecovery(); err != nil {
+			e.flashStatus(fmt.Sprintf("Could not clear recovery copy: %v", err))
+		}
+		return
+	}
+	if !e.autosaveBusy.CompareAndSwap(false, true) {
+		return
+	}
+	doc := e.Doc
+	state := doc.Snapshot()
+	showFormattingMarks := e.showFormattingMarks
+	path := e.recoveryPath
+	generation := e.recoveryGeneration.Load()
+	e.autosaveWorkers.Add(1)
+	go func() {
+		defer e.autosaveWorkers.Done()
+		defer e.autosaveBusy.Store(false)
+		if err := e.writeRecovery(path, doc, state, showFormattingMarks, generation); err != nil {
+			log.Printf("GoWrite autosave failed: %v", err)
+			go e.App.QueueUpdateDraw(func() {
+				e.flashStatus(fmt.Sprintf("Autosave failed: %v", err))
+			})
+		}
+	}()
+}
+
+func (e *Editor) writeRecovery(
+	path string,
+	doc *document.Document,
+	state document.State,
+	showFormattingMarks bool,
+	generation uint64,
+) error {
+	e.recoveryMu.Lock()
+	defer e.recoveryMu.Unlock()
+	if generation != e.recoveryGeneration.Load() || e.Doc != doc || !doc.IsDirty() {
+		return removeRecoveryFile(path)
+	}
+	return fileui.SaveRecovery(path, state, showFormattingMarks)
+}
+
+func (e *Editor) clearRecovery() error {
+	if e.recoveryPath == "" {
+		return nil
+	}
+	e.recoveryGeneration.Add(1)
+	e.recoveryMu.Lock()
+	defer e.recoveryMu.Unlock()
+	return removeRecoveryFile(e.recoveryPath)
+}
+
+func (e *Editor) StopAutosave() {
+	e.autosaveStopOnce.Do(func() {
+		if e.autosaveStop != nil {
+			close(e.autosaveStop)
+		}
+	})
+	e.autosaveWorkers.Wait()
 }

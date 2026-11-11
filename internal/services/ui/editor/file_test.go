@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"gowrite/internal/services/document"
+	fileui "gowrite/internal/services/ui/file"
 )
 
 func TestNativeSaveAndLoadRestoreDocumentAndViewSettings(t *testing.T) {
@@ -42,6 +43,33 @@ func TestNativeSaveAndLoadRestoreDocumentAndViewSettings(t *testing.T) {
 		got.Page.Footer.Center != "{page} of {pages}" ||
 		got.ActiveStyle != document.StyleBold {
 		t.Fatalf("native load lost document state: %#v", got)
+	}
+}
+
+func TestNativeLoadPreservesPageSizeAndMarginsOnNarrowTerminal(t *testing.T) {
+	doc := document.New()
+	page := doc.GetPageSettings()
+	page.Size = document.SizeLegal
+	page.Orientation = document.Landscape
+	page.Width, page.Height = document.GetDimensions(page.Size, page.Orientation)
+	page.MarginLeft, page.MarginRight = 11, 8
+	page.MarginTop, page.MarginBottom = 4, 5
+	doc.SetPageSettings(page)
+
+	filename := filepath.Join(t.TempDir(), "wide.gdoc")
+	if err := fileui.SaveDocument(filename, doc.Snapshot(), false); err != nil {
+		t.Fatal(err)
+	}
+
+	target := document.New()
+	target.SetDisplayWidth(20)
+	editor := &Editor{Doc: target}
+	if err := editor.loadFromFile(filename); err != nil {
+		t.Fatal(err)
+	}
+	_, _ = target.PageInfo()
+	if got := target.GetPageSettings(); got != page {
+		t.Fatalf("loaded page settings = %+v, want %+v", got, page)
 	}
 }
 

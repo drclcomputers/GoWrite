@@ -49,6 +49,7 @@ func (e *Editor) saveNativeToFile(filename string) error {
 	e.Doc.SetTitle(state.Title)
 	e.Doc.SetFilename(filename)
 	e.Doc.SetDirty(false)
+	e.clearRecoveryAfterSave()
 	return nil
 }
 
@@ -67,6 +68,7 @@ func (e *Editor) saveDocumentToFile(filename string) error {
 		e.Doc.SetTitle(state.Title)
 		e.Doc.SetFilename(filename)
 		e.Doc.SetDirty(false)
+		e.clearRecoveryAfterSave()
 		return nil
 	case ".txt", ".rtf":
 		if err := fileui.SaveDocument(filename, e.Doc.Snapshot(), e.showFormattingMarks); err != nil {
@@ -74,6 +76,7 @@ func (e *Editor) saveDocumentToFile(filename string) error {
 		}
 		e.Doc.SetFilename(filename)
 		e.Doc.SetDirty(false)
+		e.clearRecoveryAfterSave()
 		return nil
 	default:
 		return fmt.Errorf("unsupported save format %q", filepath.Ext(filename))
@@ -91,7 +94,6 @@ func (e *Editor) loadFromFile(filename string) error {
 		if err != nil {
 			return err
 		}
-		file.Document.Page = file.Document.Page.FitToWidth(e.terminalPageWidth())
 		if err := e.Doc.Restore(file.Document); err != nil {
 			return fmt.Errorf("invalid GoWrite document: %w", err)
 		}

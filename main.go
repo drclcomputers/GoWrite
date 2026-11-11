@@ -8,11 +8,13 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"gowrite/internal/services/document"
 	"gowrite/internal/services/ui/editor"
 	"gowrite/internal/services/ui/startmenu"
+	"gowrite/internal/services/uitheme"
 	"gowrite/internal/utils"
 	"log"
 	"os"
@@ -57,11 +59,34 @@ func main() {
 		filename = flag.Args()[0]
 	}
 
+	recoveryPath, recoveryPathErr := utils.RecoveryPath()
+	reopenRecovery := false
+	if recoveryPathErr != nil {
+		fmt.Fprintf(os.Stderr, "Could not locate recovery file: %v\n", recoveryPathErr)
+		recoveryPath = ""
+	} else if _, err := os.Stat(recoveryPath); err == nil {
+		reopenRecovery, err = promptForRecovery(app)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Could not resolve recovery prompt: %v\n", err)
+			os.Exit(1)
+		}
+		if !reopenRecovery {
+			if err := os.Remove(recoveryPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+				fmt.Fprintf(os.Stderr, "Could not discard recovery file: %v\n", err)
+				os.Exit(1)
+			}
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		fmt.Fprintf(os.Stderr, "Could not check recovery file: %v\n", err)
+	}
+
 	var doc *document.Document
 	startChoice := startmenu.StartNew
 	var startMenu *startmenu.StartMenu
 
-	if filename != "" {
+	if reopenRecovery {
+		doc = document.New()
+	} else if filename != "" {
 		data, err := os.ReadFile(filename)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Could not open %s: %v\n", filename, err)
@@ -96,6 +121,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Could not load saved options; using defaults: %v\n", settingsErr)
 	}
 	editorUI := editor.NewEditor(app, doc, settings)
+	editorUI.ConfigureRecovery(recoveryPath)
 	editorUI.Mount()
 
 	if startMenu != nil {
@@ -112,11 +138,41 @@ func main() {
 		})
 	}
 
-	if startChoice == startmenu.StartOpen {
+	if reopenRecovery {
+		if err := editorUI.ReopenRecovery(); err != nil {
+			editor.ShowErrorModal(app, editorUI.Root, fmt.Sprintf("Could not reopen recovery file: %v", err))
+		}
+	} else if startChoice == startmenu.StartOpen && startMenu != nil {
 		editorUI.OpenDocument(startMenu.View, startMenu.Focus)
 	}
 
 	if err := app.Run(); err != nil {
+		editorUI.StopAutosave()
 		log.Fatal(err)
 	}
+	editorUI.StopAutosave()
+	if err := editorUI.DiscardRecovery(); err != nil {
+		log.Printf("Could not clear recovery file on exit: %v", err)
+	}
+}
+
+func promptForRecovery(app *tview.Application) (bool, error) {
+	reopen, chosen := false, false
+	modal := tview.NewModal().
+		SetText("An autosaved recovery copy was found.\nWould you like to reopen it or discard it?").
+		AddButtons([]string{"Reopen", "Discard"}).
+		SetDoneFunc(func(_ int, label string) {
+			reopen = label == "Reopen"
+			chosen = true
+			app.Stop()
+		})
+	uitheme.StyleModalWarn(modal, "Document Recovery")
+	app.SetRoot(modal, true).SetFocus(modal)
+	if err := app.Run(); err != nil {
+		return false, err
+	}
+	if !chosen {
+		return false, fmt.Errorf("recovery choice was not completed")
+	}
+	return reopen, nil
 }
