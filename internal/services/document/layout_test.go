@@ -124,12 +124,12 @@ func TestGoalColumnSurvivesShortParagraph(t *testing.T) {
 func TestCursorRow(t *testing.T) {
 	d := newTestDoc(12, "hello world foo bar", "x")
 	d.CursorPara, d.CursorOff = 1, 0
-	if got := d.CursorRow(); got != 3 {
-		t.Errorf("second paragraph row = %d, want 3", got)
+	if got := d.CursorRow(); got != 6 {
+		t.Errorf("second paragraph row = %d, want 6", got)
 	}
 	d.CursorPara, d.CursorOff = 0, 10
-	if got := d.CursorRow(); got != 1 {
-		t.Errorf("row of offset 10 = %d, want 1", got)
+	if got := d.CursorRow(); got != 4 {
+		t.Errorf("row of offset 10 = %d, want 4", got)
 	}
 }
 
@@ -231,20 +231,33 @@ func TestAlignmentAppliesToEveryWrappedLine(t *testing.T) {
 	// wrap width 10: rows "hello", "world foo", "bar"
 	d := newTestDoc(12, "hello world foo bar")
 
-	d.Paragraphs[0].Align = AlignRight
-	for i, line := range plainLines(d) {
-		if got := len([]rune(strings.TrimRight(line, " "))); got != 10 {
-			t.Errorf("right: row %d ends at column %d, want 10: %q", i, got, line)
+	checkPositions := func(align Align, texts []string) {
+		t.Helper()
+		d.Paragraphs[0].Align = align
+		found := make(map[string]bool, len(texts))
+		for _, line := range plainLines(d) {
+			for _, text := range texts {
+				if got := strings.Index(line, text); got >= 0 {
+					found[text] = true
+					got = len([]rune(line[:got]))
+					column := 1 + d.geometry().ps.MarginLeft +
+						alignPad(align, d.geometry().bodyW, widthOf([]rune(text)))
+					if got != column {
+						t.Errorf("%v alignment: %q starts at column %d, want %d: %q",
+							align, text, got, column, line)
+					}
+				}
+			}
+		}
+		for _, text := range texts {
+			if !found[text] {
+				t.Errorf("%v alignment: did not render %q", align, text)
+			}
 		}
 	}
 
-	d.Paragraphs[0].Align = AlignCenter
-	want := []int{7, 9, 6} // pad (10-5)/2, (10-9)/2, (10-3)/2 plus the text
-	for i, line := range plainLines(d) {
-		if got := len([]rune(strings.TrimRight(line, " "))); got != want[i] {
-			t.Errorf("center: row %d ends at column %d, want %d: %q", i, got, want[i], line)
-		}
-	}
+	checkPositions(AlignRight, []string{"hello", "world foo", "bar"})
+	checkPositions(AlignCenter, []string{"hello", "world foo", "bar"})
 }
 
 func TestRenderEscapesTags(t *testing.T) {

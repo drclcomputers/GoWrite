@@ -25,6 +25,10 @@ func (e *Editor) handleKeys(event *tcell.EventKey) *tcell.EventKey {
 	if _, inTable := e.Doc.TableParagraph(); inTable {
 		switch event.Key() {
 		case tcell.KeyEnter:
+			if e.Doc.InsertParagraphBeforeTableAtCursor() {
+				e.redraw()
+				return nil
+			}
 			if e.Doc.MoveAfterTableAtCursor() {
 				e.redraw()
 				return nil

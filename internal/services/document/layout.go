@@ -389,9 +389,6 @@ func (d *Document) render(withCaret, formattingMarks bool) (string, int) {
 
 			cw := widthOf(rs[ln.Start:ln.CEnd])
 			pad := alignPad(p.Align, g.bodyW, cw)
-			if pad > 0 {
-				lineBuf.WriteString(strings.Repeat(" ", pad))
-			}
 
 			vEnd := ln.CEnd
 			room := g.bodyW - pad - cw
@@ -404,8 +401,17 @@ func (d *Document) render(withCaret, formattingMarks bool) (string, int) {
 				vEnd++
 			}
 
-			writeRange(&lineBuf, p, ln.Start, vEnd, caret, selFrom, selTo, formattingMarks, pageReset, caretOpen, caretClose)
 			glyph := hasCaret && (caret < ln.Start || caret >= vEnd)
+			if glyph {
+				pad = min(pad, max(g.bodyW-widthOf(rs[ln.Start:vEnd])-1, 0))
+				for vEnd > ln.Start && pad+widthOf(rs[ln.Start:vEnd])+1 > g.bodyW {
+					vEnd--
+				}
+			}
+			if pad > 0 {
+				lineBuf.WriteString(strings.Repeat(" ", pad))
+			}
+			writeRange(&lineBuf, p, ln.Start, vEnd, caret, selFrom, selTo, formattingMarks, pageReset, caretOpen, caretClose)
 			if glyph {
 				lineBuf.WriteString(caretOpen + caretGlyph + caretClose)
 			}

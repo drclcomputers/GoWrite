@@ -29,11 +29,21 @@ func (d *Document) geometry() pageGeo {
 		ps = DefaultA4Portrait()
 	}
 	ps = ps.Normalized()
-	if d.DisplayWidth > 0 && ps.Width > max(minPageWidth, d.DisplayWidth-2) {
-		width := max(minPageWidth, d.DisplayWidth-2)
+	if d.DisplayWidth > 0 && ps.Width > max(1, d.DisplayWidth-2) {
+		width := max(1, d.DisplayWidth-2)
 		height := max(minPageHeight, int(math.Round(float64(ps.Height)*float64(width)/float64(ps.Width))))
 		ps.Width, ps.Height = width, height
-		ps = ps.Normalized()
+		ps.MarginLeft, ps.MarginRight = fitMargins(
+			ps.MarginLeft, ps.MarginRight, max(width-minBodyWidth, 0))
+		chrome := 0
+		if ps.hasHeader() {
+			chrome++
+		}
+		if ps.hasFooter() {
+			chrome++
+		}
+		ps.MarginTop, ps.MarginBottom = fitMargins(
+			ps.MarginTop, ps.MarginBottom, max(height-chrome-minBodyRows, 0))
 	}
 	g := pageGeo{ps: ps, hdr: ps.hasHeader(), ftr: ps.hasFooter()}
 	g.top, g.bottom = ps.MarginTop, ps.MarginBottom

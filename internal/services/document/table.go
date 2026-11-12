@@ -270,6 +270,34 @@ func (d *Document) MoveAfterTableAtCursor() bool {
 	return true
 }
 
+// InsertParagraphBeforeTableAtCursor inserts a blank paragraph when the cursor
+// is at the table's upper-left corner or the start of its first cell.
+func (d *Document) InsertParagraphBeforeTableAtCursor() bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.ensureCursor()
+	start, ok := tableParagraphIndex(d.Paragraphs, d.CursorPara)
+	if !ok {
+		return false
+	}
+	atTableStart := d.CursorPara == start && d.CursorOff == 0
+	atFirstCell := d.CursorPara == start+1 && d.CursorOff == 2
+	if (!atTableStart && !atFirstCell) || d.hasAnchor {
+		return false
+	}
+
+	d.pushHistory()
+	d.Paragraphs = append(d.Paragraphs, Paragraph{})
+	copy(d.Paragraphs[start+1:], d.Paragraphs[start:])
+	d.Paragraphs[start] = Paragraph{Runs: []Run{{Text: ""}}}
+	d.CursorPara = start
+	d.CursorOff = 0
+	d.hasAnchor = false
+	d.goalSet = false
+	d.Dirty = true
+	return true
+}
+
 // UpdateTableAt replaces a table's cell data and refreshes its editor rendering.
 func (d *Document) UpdateTableAt(paragraph int, table Table) error {
 	if err := validateTable(&table); err != nil {

@@ -221,6 +221,71 @@ func TestEnterAtTableEndMovesToFollowingParagraph(t *testing.T) {
 	}
 }
 
+func TestEnterAtTableUpperLeftInsertsParagraphAbove(t *testing.T) {
+	for _, cursor := range []struct {
+		name string
+		para int
+		off  int
+	}{
+		{name: "top border", para: 0, off: 0},
+		{name: "first cell", para: 1, off: 2},
+	} {
+		t.Run(cursor.name, func(t *testing.T) {
+			d := New()
+			if err := d.InsertTable(1, 2); err != nil {
+				t.Fatal(err)
+			}
+			d.Paragraphs[0].PageBreak = true
+			table, ok := d.TableAt(0)
+			if !ok {
+				t.Fatal("inserted table not found")
+			}
+			d.CursorPara, d.CursorOff = cursor.para, cursor.off
+
+			if !d.InsertParagraphBeforeTableAtCursor() {
+				t.Fatal("Enter at the table's upper-left did not insert a paragraph")
+			}
+			if d.CursorPara != 0 || d.CursorOff != 0 || plainOf(d.Paragraphs[0]) != "" {
+				t.Fatalf("cursor did not move to the new blank paragraph: (%d,%d), %q",
+					d.CursorPara, d.CursorOff, plainOf(d.Paragraphs[0]))
+			}
+			if d.Paragraphs[0].PageBreak {
+				t.Fatal("new paragraph inherited the table's page break")
+			}
+			if !d.Paragraphs[1].PageBreak {
+				t.Fatal("table lost its page break")
+			}
+			got, ok := d.TableAt(1)
+			if !ok || !sameTable(&got, &table) {
+				t.Fatal("table changed while moving it down")
+			}
+			if _, inTable := d.TableParagraph(); inTable {
+				t.Fatal("cursor remained inside the table")
+			}
+			if !d.Undo() {
+				t.Fatal("undo did not remove the inserted paragraph")
+			}
+			if _, inTable := d.TableParagraph(); !inTable {
+				t.Fatal("undo did not restore the cursor to the table")
+			}
+		})
+	}
+}
+
+func TestEnterInsideTableDoesNotInsertParagraphAbove(t *testing.T) {
+	d := New()
+	if err := d.InsertTable(1, 2); err != nil {
+		t.Fatal(err)
+	}
+	d.CursorOff++
+	if d.InsertParagraphBeforeTableAtCursor() {
+		t.Fatal("Enter away from the table's upper-left inserted a paragraph")
+	}
+	if len(d.Paragraphs) < 3 {
+		t.Fatal("table changed away from its upper-left")
+	}
+}
+
 func TestTableCellFormattingIsRendered(t *testing.T) {
 	d := New()
 	if err := d.InsertTable(1, 1); err != nil {
