@@ -126,6 +126,31 @@ func TestDOCXSaveAndLoadRestoreDocument(t *testing.T) {
 	}
 }
 
+func TestRTFLoadRestoresDocumentAndFilename(t *testing.T) {
+	source := document.New()
+	source.LoadText("RTF text\nsecond paragraph")
+	source.Paragraphs[1].Runs[0].Style = document.StyleItalic
+	filename := filepath.Join(t.TempDir(), "imported.rtf")
+	if err := fileui.ExportDocument(filename, source.Snapshot()); err != nil {
+		t.Fatal(err)
+	}
+
+	editor := &Editor{Doc: document.New()}
+	if err := editor.loadFromFile(filename); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := editor.Doc.Text(), source.Text(); got != want {
+		t.Fatalf("loaded RTF text = %q, want %q", got, want)
+	}
+	if editor.Doc.GetTitle() != "imported" || editor.Doc.GetFilename() != filename {
+		t.Fatalf("RTF metadata was not set: title=%q filename=%q",
+			editor.Doc.GetTitle(), editor.Doc.GetFilename())
+	}
+	if editor.Doc.Paragraphs[1].Runs[0].Style&document.StyleItalic == 0 {
+		t.Fatal("RTF import lost text formatting")
+	}
+}
+
 func TestSaveAsTextUpdatesActiveFilenameAndCleanState(t *testing.T) {
 	doc := document.New()
 	doc.LoadText("plain text")

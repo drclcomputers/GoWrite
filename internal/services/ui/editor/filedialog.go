@@ -24,7 +24,6 @@ type fileDialogMode int
 const (
 	fileDialogOpen fileDialogMode = iota
 	fileDialogSave
-	fileDialogExport
 )
 
 func (e *Editor) showFileDialog(mode fileDialogMode) {
@@ -82,8 +81,10 @@ func (e *Editor) showFileDialogWithReturn(mode fileDialogMode, afterSave func(),
 
 	var formats []fileui.FormatOption
 	switch mode {
-	case fileDialogSave, fileDialogExport:
-		formats = fileui.DocumentFormats()
+	case fileDialogSave:
+		formats = fileui.SaveExportFormats()
+	case fileDialogOpen:
+		formats = fileui.OpenFormats()
 	}
 
 	selectedFormat := 0
@@ -93,7 +94,7 @@ func (e *Editor) showFileDialogWithReturn(mode fileDialogMode, afterSave func(),
 			ShowErrorModal(e.App, returnTo, fmt.Sprintf("Could not load saved options: %v", err))
 			return
 		}
-		selectedFormat = fileui.FormatIndex(settings.DefaultSaveFormat, fileui.DocumentFormats())
+		selectedFormat = fileui.FormatIndex(settings.DefaultSaveFormat, formats)
 	}
 	baseName := e.Doc.GetTitle()
 	if currentFilename != "" {
@@ -112,15 +113,6 @@ func (e *Editor) showFileDialogWithReturn(mode fileDialogMode, afterSave func(),
 			selectedFormat = 2
 		case ".rtf":
 			selectedFormat = 3
-		}
-	} else if mode == fileDialogExport {
-		switch strings.ToLower(filepath.Ext(currentFilename)) {
-		case ".rtf":
-			selectedFormat = 3
-		case ".txt":
-			selectedFormat = 2
-		default:
-			selectedFormat = 2
 		}
 	}
 	if mode == fileDialogOpen {
@@ -177,7 +169,8 @@ func (e *Editor) showFileDialogWithReturn(mode fileDialogMode, afterSave func(),
 			}
 			name := entry.Name()
 			ext := strings.ToLower(filepath.Ext(name))
-			if mode == fileDialogOpen && ext != ".gdoc" && ext != ".docx" && ext != ".txt" && ext != ".md" {
+			if mode == fileDialogOpen && fileui.FormatIndex(ext, formats) == 0 &&
+				!strings.EqualFold(ext, formats[0].Extension) {
 				continue
 			}
 			info, err := entry.Info()
@@ -260,7 +253,7 @@ func (e *Editor) showFileDialogWithReturn(mode fileDialogMode, afterSave func(),
 			return "", fmt.Errorf("filename cannot be empty")
 		}
 		if extension != "" {
-			filename = fileui.WithExtension(filename, extension, fileui.DocumentFormats())
+			filename = fileui.WithExtension(filename, extension, formats)
 		}
 		if strings.HasPrefix(filename, "~") {
 			filename = filepath.Join(homeDir, strings.TrimLeft(strings.TrimPrefix(filename, "~"), string(os.PathSeparator)))
@@ -304,11 +297,20 @@ func (e *Editor) showFileDialogWithReturn(mode fileDialogMode, afterSave func(),
 		action := func() {
 			extension := strings.ToLower(filepath.Ext(filename))
 			var err error
-			switch extension {
-			case ".gdoc", ".docx", ".txt", ".rtf":
-				err = e.saveDocumentToFile(filename)
-			default:
-				err = fmt.Errorf("unsupported file format %q", extension)
+			exporting := extension == ".pdf" || extension == ".html"
+			if afterSave != nil && exporting {
+				showDialogError("Choose a save format to continue; PDF and HTML are export-only.")
+				return
+			}
+			if exporting {
+				err = e.exportToFile(filename)
+			} else {
+				switch extension {
+				case ".gdoc", ".docx", ".txt", ".rtf":
+					err = e.saveDocumentToFile(filename)
+				default:
+					err = fmt.Errorf("unsupported file format %q", extension)
+				}
 			}
 			if err != nil {
 				showDialogError(fmt.Sprintf("Could not write %s: %v", filename, err))
@@ -320,7 +322,11 @@ func (e *Editor) showFileDialogWithReturn(mode fileDialogMode, afterSave func(),
 			}
 			e.App.SetRoot(e.Root, true).SetFocus(e.View)
 			e.redraw()
-			e.flashStatus(fmt.Sprintf("Saved %s", filepath.Base(filename)))
+			actionName := "Saved"
+			if exporting {
+				actionName = "Exported"
+			}
+			e.flashStatus(fmt.Sprintf("%s %s", actionName, filepath.Base(filename)))
 		}
 		if checkOverwrite {
 			confirmOverwrite(filename, action)

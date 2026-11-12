@@ -38,6 +38,10 @@ func ExportDocument(filename string, state document.State) error {
 		return fileop.ExportRTF(filename, state)
 	case ".docx":
 		return fileop.ExportDOCX(filename, state)
+	case ".pdf":
+		return fileop.ExportPDF(filename, state)
+	case ".html":
+		return fileop.ExportHTML(filename, state)
 	default:
 		return fmt.Errorf("unsupported export format %q", filepath.Ext(filename))
 	}
@@ -53,6 +57,10 @@ func SaveRecovery(filename string, state document.State, showFormattingMarks boo
 
 func LoadWord(filename string) (document.State, error) {
 	return fileop.LoadDOCX(filename)
+}
+
+func LoadRichText(filename string) (document.State, error) {
+	return fileop.LoadRTF(filename)
 }
 
 func ReadText(filename string) (string, error) {

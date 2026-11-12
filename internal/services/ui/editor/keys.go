@@ -96,10 +96,6 @@ func (e *Editor) handleKeys(event *tcell.EventKey) *tcell.EventKey {
 			e.showHeaderFooter()
 			return nil
 		case 'e', 'E':
-			if hasShift {
-				e.exportDocument()
-				return nil
-			}
 			e.Doc.SetParagraphAlign(document.AlignCenter)
 			e.redraw()
 			return nil

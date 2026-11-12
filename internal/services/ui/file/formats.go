@@ -16,11 +16,39 @@ type FormatOption struct {
 	Description string
 }
 
-func DocumentFormats() []FormatOption {
+func SaveFormats() []FormatOption {
 	return []FormatOption{
 		{Extension: ".gdoc", Description: "GoWrite native document"},
 		{Extension: ".docx", Description: "Microsoft Word document"},
 		{Extension: ".txt", Description: "Plain text"},
+		{Extension: ".rtf", Description: "Rich text"},
+	}
+}
+
+func SaveExportFormats() []FormatOption {
+	formats := SaveFormats()
+	return append(formats,
+		FormatOption{Extension: ".pdf", Description: "PDF document"},
+		FormatOption{Extension: ".html", Description: "HTML document"},
+	)
+}
+
+func ExportFormats() []FormatOption {
+	return []FormatOption{
+		{Extension: ".docx", Description: "Microsoft Word document"},
+		{Extension: ".txt", Description: "Plain text"},
+		{Extension: ".rtf", Description: "Rich text"},
+		{Extension: ".pdf", Description: "PDF document"},
+		{Extension: ".html", Description: "HTML document"},
+	}
+}
+
+func OpenFormats() []FormatOption {
+	return []FormatOption{
+		{Extension: ".gdoc", Description: "GoWrite native document"},
+		{Extension: ".docx", Description: "Microsoft Word document"},
+		{Extension: ".txt", Description: "Plain text"},
+		{Extension: ".md", Description: "Markdown text"},
 		{Extension: ".rtf", Description: "Rich text"},
 	}
 }

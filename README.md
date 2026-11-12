@@ -24,7 +24,7 @@ GoWrite is a terminal-native word processor built with Go and [tview](https://gi
 - **📄 Page layout**: paper size, orientation, margins, page background, headers, footers, and page numbers
 - **📊 Tables**: structured tables with per-cell formatting
 - **🔎 Navigation**: find and replace, go to line, heading outline, and page breaks
-- **💾 File formats**: GoWrite native documents, Word DOCX, plain text, Markdown import, and RTF export
+- **💾 File formats**: GoWrite native documents, Word DOCX, RTF, plain text, Markdown import, and PDF/HTML export
 
 ---
 
@@ -83,7 +83,7 @@ The command-line `-file` option and positional filename open a file as plain tex
 ./gowrite notes.txt
 ```
 
-Use the in-app Open dialog to load `.gdoc`, `.docx`, `.txt`, or `.md` files.
+Use the in-app Open dialog to load `.gdoc`, `.docx`, `.rtf`, `.txt`, or `.md` files.
 
 ---
 
@@ -93,43 +93,42 @@ On macOS, configure your terminal to use **Option as Meta** for Alt shortcuts.
 
 ### Navigation and editing
 
-| Key | Action |
-| --- | --- |
-| Arrow keys | Move the cursor |
-| Shift + Arrow keys | Extend the selection |
-| Alt + Shift + Left / Right | Select by word |
-| Home / End | Start / end of the wrapped line |
-| Ctrl + Home / End or Alt + Home / End | Start / end of the document |
-| Page Up / Page Down | Move by a screen |
-| Type | Insert text or replace the selection |
-| Enter | Start a new paragraph |
-| Backspace / Delete | Delete text |
-| Tab | Insert a tab; inside a table, open its cell editor |
-| Esc | Open the file menu |
+| Key                                   | Action                                             |
+| ------------------------------------- | -------------------------------------------------- |
+| Arrow keys                            | Move the cursor                                    |
+| Shift + Arrow keys                    | Extend the selection                               |
+| Alt + Shift + Left / Right            | Select by word                                     |
+| Home / End                            | Start / end of the wrapped line                    |
+| Ctrl + Home / End or Alt + Home / End | Start / end of the document                        |
+| Page Up / Page Down                   | Move by a screen                                   |
+| Type                                  | Insert text or replace the selection               |
+| Enter                                 | Start a new paragraph                              |
+| Backspace / Delete                    | Delete text                                        |
+| Tab                                   | Insert a tab; inside a table, open its cell editor |
+| Esc                                   | Open the file menu                                 |
 
 ### Formatting and document actions
 
-| Key | Action |
-| --- | --- |
-| Alt + Enter | Open the Format screen |
-| Alt + B / I / U / K | Toggle bold / italic / underline / strikethrough |
-| Alt + A | Apply the active style to the selection or paragraph |
-| Alt + C / Y | Choose text / background color |
-| Alt + L / E / R | Align left / center / right |
-| Alt + P | Page setup |
-| Alt + D | Header, footer, and page-number settings |
-| Alt + Shift + P | Insert a page break |
-| Alt + S | Save |
-| Alt + Shift + S | Save As |
-| Alt + Shift + E | Export |
-| Alt + N / O | New / open document |
-| Alt + G | Go to line |
-| Alt + F / H | Find / find and replace |
-| F3 / F4 | Find next / previous |
-| Alt + Shift + C / X / V | Copy / cut / paste |
-| Alt + Shift + A | Select all |
-| Alt + Z / Shift + Alt + Z | Undo / redo |
-| `?` or Alt + `/` | Show help |
+| Key                       | Action                                               |
+| ------------------------- | ---------------------------------------------------- |
+| Alt + Enter               | Open the Format screen                               |
+| Alt + B / I / U / K       | Toggle bold / italic / underline / strikethrough     |
+| Alt + A                   | Apply the active style to the selection or paragraph |
+| Alt + C / Y               | Choose text / background color                       |
+| Alt + L / E / R           | Align left / center / right                          |
+| Alt + P                   | Page setup                                           |
+| Alt + D                   | Header, footer, and page-number settings             |
+| Alt + Shift + P           | Insert a page break                                  |
+| Alt + S                   | Save                                                 |
+| Alt + Shift + S           | Save As                                              |
+| Alt + N / O               | New / open document                                  |
+| Alt + G                   | Go to line                                           |
+| Alt + F / H               | Find / find and replace                              |
+| F3 / F4                   | Find next / previous                                 |
+| Alt + Shift + C / X / V   | Copy / cut / paste                                   |
+| Alt + Shift + A           | Select all                                           |
+| Alt + Z / Shift + Alt + Z | Undo / redo                                          |
+| `?` or Alt + `/`          | Show help                                            |
 
 The Format screen also groups style, list, view, insert, paragraph, and page-setup actions. Use `Alt + Shift + Left / Right` there to move between sections.
 
@@ -137,15 +136,17 @@ The Format screen also groups style, list, view, insert, paragraph, and page-set
 
 ## 📁 File Formats
 
-| Format | Extension | Open | Save / Export | Notes |
-| --- | --- | --- | --- | --- |
-| GoWrite | `.gdoc` | ✅ | ✅ | Native compressed document format; preserves GoWrite document and editor state |
-| Word | `.docx` | ✅ | ✅ | Imports and exports supported text, tables, formatting, colors, and page settings; advanced Word features may not round-trip |
-| Plain text | `.txt` | ✅ | ✅ | Formatting is not retained |
-| Markdown | `.md` | ✅ | — | Opened as plain text; Markdown syntax is not rendered |
-| Rich Text Format | `.rtf` | — | ✅ | Write/export only; RTF import is not supported |
+| Format           | Extension | Open | Save | Export | Notes                                                                                                                        |
+| ---------------- | --------- | ---- | ---- | ------ | ---------------------------------------------------------------------------------------------------------------------------- |
+| GoWrite          | `.gdoc`   | ✅   | ✅   | —      | Native compressed document format; preserves GoWrite document and editor state                                               |
+| Word             | `.docx`   | ✅   | ✅   | ✅     | Imports and exports supported text, tables, formatting, colors, and page settings; advanced Word features may not round-trip |
+| Plain text       | `.txt`    | ✅   | ✅   | ✅     | Formatting is not retained                                                                                                   |
+| Markdown         | `.md`     | ✅   | —    | —      | Opened as plain text; Markdown syntax is not rendered                                                                        |
+| Rich Text Format | `.rtf`    | ✅   | ✅   | ✅     | Imports supported text formatting and tables                                                                                 |
+| PDF              | `.pdf`    | —    | —    | ✅     | Export only; embeds Go fonts                                                                                                 |
+| HTML             | `.html`   | —    | —    | ✅     | Self-contained HTML with document formatting and tables                                                                      |
 
-The Open dialog accepts `.gdoc`, `.docx`, `.txt`, and `.md`. Save supports `.gdoc`, `.docx`, `.txt`, and `.rtf`; Export supports `.docx`, `.txt`, and `.rtf`.
+Save and export share one file dialog. The Open dialog accepts `.gdoc`, `.docx`, `.txt`, `.md`, and `.rtf`. Save supports `.gdoc`, `.docx`, `.txt`, and `.rtf`; Export supports `.docx`, `.txt`, `.rtf`, `.pdf`, and `.html`. Markdown is opened as plain text; RTF import preserves supported text formatting and tables. PDF and HTML exports include supported text formatting, tables, page settings, and page breaks, and do not change the active document's save state.
 
 Native `.gdoc` files are gzip-compressed JSON. For safety, GoWrite rejects files that expand beyond 500 MiB when opened.
 
@@ -175,7 +176,7 @@ gowrite/
 ├── internal/
 │   ├── services/
 │   │   ├── document/       # Document model, editing, pagination, tables, history
-│   │   ├── fileop/         # Native, DOCX, RTF, and text I/O
+│   │   ├── fileop/         # Native, DOCX, RTF, PDF, HTML, and text I/O
 │   │   ├── ui/
 │   │   │   ├── editor/     # Editor, formatting, and file dialogs
 │   │   │   ├── file/       # File-format operations

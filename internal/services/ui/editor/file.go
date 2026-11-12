@@ -34,10 +34,6 @@ func (e *Editor) saveAsDocument() {
 	e.showFileDialog(fileDialogSave)
 }
 
-func (e *Editor) exportDocument() {
-	e.showFileDialog(fileDialogExport)
-}
-
 func (e *Editor) saveNativeToFile(filename string) error {
 	state := e.Doc.Snapshot()
 	if state.Title == "" || state.Title == "Untitled" {
@@ -108,6 +104,18 @@ func (e *Editor) loadFromFile(filename string) error {
 		}
 		if state.Title == "" {
 			e.Doc.SetTitle(strings.TrimSuffix(filepath.Base(filename), filepath.Ext(filename)))
+		}
+		e.showFormattingMarks = e.defaultFormattingMarks
+	case ".rtf":
+		state, err := fileui.LoadRichText(filename)
+		if err != nil {
+			return err
+		}
+		if state.Title == "" {
+			state.Title = strings.TrimSuffix(filepath.Base(filename), filepath.Ext(filename))
+		}
+		if err := e.Doc.Restore(state); err != nil {
+			return fmt.Errorf("invalid RTF document: %w", err)
 		}
 		e.showFormattingMarks = e.defaultFormattingMarks
 	case ".txt", ".md":

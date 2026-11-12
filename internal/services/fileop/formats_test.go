@@ -117,6 +117,114 @@ func TestExportTXTAndRTF(t *testing.T) {
 	}
 }
 
+func TestRTFImportRestoresTextFormattingAndTables(t *testing.T) {
+	doc := document.New()
+	doc.SetTitle("RTF import")
+	doc.LoadText("Heading\nRich 日本")
+	doc.Paragraphs[0].ParaStyle = document.ParagraphHeading1
+	doc.Paragraphs[1].Align = document.AlignRight
+	doc.Paragraphs[1].Runs[0].Style = document.StyleBold | document.StyleItalic
+	doc.Paragraphs[1].Runs[0].Fg = "#123456"
+	if err := doc.InsertTable(1, 2); err != nil {
+		t.Fatal(err)
+	}
+	tableParagraph, ok := doc.TableParagraph()
+	if !ok {
+		t.Fatal("inserted table not found")
+	}
+	table, _ := doc.TableAt(tableParagraph)
+	table.Rows[0] = []string{"left", "right"}
+	if err := doc.UpdateTableAt(tableParagraph, table); err != nil {
+		t.Fatal(err)
+	}
+	wantText := doc.Text()
+
+	filename := filepath.Join(t.TempDir(), "sample.rtf")
+	if err := os.WriteFile(filename, []byte(encodeRTF(doc.Snapshot())), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	state, err := LoadRTF(filename)
+	if err != nil {
+		t.Fatal(err)
+	}
+	restored := document.New()
+	if err := restored.Restore(state); err != nil {
+		t.Fatal(err)
+	}
+	if got := restored.Text(); got != wantText {
+		t.Fatalf("RTF text = %q, want %q", got, wantText)
+	}
+	paragraphs := make([]document.Paragraph, 0, 2)
+	var importedTable bool
+	for _, paragraph := range restored.Paragraphs {
+		if paragraph.Table != nil {
+			importedTable = true
+			continue
+		}
+		if !paragraph.TablePart {
+			paragraphs = append(paragraphs, paragraph)
+		}
+	}
+	if len(paragraphs) != 2 || paragraphs[0].ParaStyle != document.ParagraphHeading1 ||
+		paragraphs[1].Align != document.AlignRight ||
+		paragraphs[1].Runs[0].Style&(document.StyleBold|document.StyleItalic) != document.StyleBold|document.StyleItalic ||
+		paragraphs[1].Runs[0].Fg != "#123456" {
+		t.Fatalf("RTF text formatting was not restored: %#v", paragraphs)
+	}
+	if !importedTable {
+		t.Fatal("RTF table was not imported as a structured table")
+	}
+}
+
+func TestExportHTMLAndPDF(t *testing.T) {
+	doc := document.New()
+	doc.SetTitle("Export <checks>")
+	doc.LoadText("Heading\n<script>日本</script>")
+	doc.Paragraphs[0].ParaStyle = document.ParagraphHeading1
+	doc.Paragraphs[1].Runs[0].Style = document.StyleBold | document.StyleUnderline
+	doc.Paragraphs[1].Runs[0].Fg = "#123456"
+	if err := doc.InsertTable(1, 2); err != nil {
+		t.Fatal(err)
+	}
+	paragraph, _ := doc.TableParagraph()
+	table, _ := doc.TableAt(paragraph)
+	table.Rows[0] = []string{"left", "right"}
+	if err := doc.UpdateTableAt(paragraph, table); err != nil {
+		t.Fatal(err)
+	}
+	state := doc.Snapshot()
+	dir := t.TempDir()
+
+	htmlPath := filepath.Join(dir, "document.html")
+	if err := ExportHTML(htmlPath, state); err != nil {
+		t.Fatal(err)
+	}
+	htmlData, err := os.ReadFile(htmlPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"<!doctype html>", "<h1>", "&lt;script&gt;", "<table>", "日本"} {
+		if !strings.Contains(string(htmlData), want) {
+			t.Errorf("HTML export missing %q", want)
+		}
+	}
+	if strings.Contains(string(htmlData), "<script>") {
+		t.Fatal("HTML export did not escape document text")
+	}
+
+	pdfPath := filepath.Join(dir, "document.pdf")
+	if err := ExportPDF(pdfPath, state); err != nil {
+		t.Fatal(err)
+	}
+	pdfData, err := os.ReadFile(pdfPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.HasPrefix(pdfData, []byte("%PDF-")) {
+		t.Fatalf("PDF export has an invalid signature: %q", pdfData[:min(len(pdfData), 8)])
+	}
+}
+
 func TestTableExportsAsStructuredData(t *testing.T) {
 	doc := document.New()
 	if err := doc.InsertTable(2, 2); err != nil {
