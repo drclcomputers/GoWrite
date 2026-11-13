@@ -225,6 +225,57 @@ func TestExportHTMLAndPDF(t *testing.T) {
 	}
 }
 
+func TestExportMarkdownPreservesDocumentFormattingAndStructure(t *testing.T) {
+	doc := document.New()
+	doc.LoadText("Title\n** & styles\n• parent\n  • child\n1. numbered\n[ ] task\nQuote\nCode `sample`\n")
+	paragraphs := doc.Paragraphs
+	paragraphs[0].ParaStyle = document.ParagraphTitle
+	paragraphs[1].Runs = []document.Run{
+		{Text: "Bold", Style: document.StyleBold},
+		{Text: " italic", Style: document.StyleItalic},
+		{Text: " strike", Style: document.StyleStrike},
+		{Text: " underline", Style: document.StyleUnderline},
+		{Text: " color", Fg: "#123456"},
+	}
+	paragraphs[6].ParaStyle = document.ParagraphQuote
+	paragraphs[7].ParaStyle = document.ParagraphCode
+	paragraphs[7].PageBreak = true
+	paragraphs = append(paragraphs, document.Paragraph{
+		Table: &document.Table{
+			Rows: [][]string{{"left|right", "center"}, {"**plain**", "value"}},
+			CellFormats: [][]document.TableCellFormat{
+				{{}, {Alignment: document.AlignCenter}},
+			},
+		},
+	})
+	state := doc.Snapshot()
+	state.Paragraphs = paragraphs
+
+	filename := filepath.Join(t.TempDir(), "document.md")
+	if err := ExportMarkdown(filename, state); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filename)
+	if err != nil {
+		t.Fatal(err)
+	}
+	output := string(data)
+	for _, want := range []string{
+		"# Title",
+		`**Bold** *italic* ~~strike~~ <u>underline</u> <span style="color:#123456">color</span>`,
+		"- parent\n  - child\n1. numbered\n- [ ] task",
+		"> Quote",
+		"<div style=\"page-break-before: always;\"></div>\n\n```",
+		"| left\\|right | center |",
+		"| --- | :---: |",
+		"| \\*\\*plain\\*\\* | value |",
+	} {
+		if !strings.Contains(output, want) {
+			t.Errorf("Markdown export missing %q:\n%s", want, output)
+		}
+	}
+}
+
 func TestTableExportsAsStructuredData(t *testing.T) {
 	doc := document.New()
 	if err := doc.InsertTable(2, 2); err != nil {

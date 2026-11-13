@@ -42,6 +42,8 @@ func ExportDocument(filename string, state document.State) error {
 		return fileop.ExportPDF(filename, state)
 	case ".html":
 		return fileop.ExportHTML(filename, state)
+	case ".md":
+		return fileop.ExportMarkdown(filename, state)
 	default:
 		return fmt.Errorf("unsupported export format %q", filepath.Ext(filename))
 	}

@@ -25,12 +25,12 @@ func TestFormatListsExposeSupportedOpenSaveAndExportTypes(t *testing.T) {
 			t.Errorf("save formats omit %s", extension)
 		}
 	}
-	for _, extension := range []string{".docx", ".txt", ".rtf", ".pdf", ".html"} {
+	for _, extension := range []string{".docx", ".txt", ".rtf", ".pdf", ".html", ".md"} {
 		if !export[extension] {
 			t.Errorf("export formats omit %s", extension)
 		}
 	}
-	for _, extension := range []string{".gdoc", ".docx", ".txt", ".rtf", ".pdf", ".html"} {
+	for _, extension := range []string{".gdoc", ".docx", ".txt", ".rtf", ".md", ".pdf", ".html"} {
 		if !dialog[extension] {
 			t.Errorf("save/export dialog formats omit %s", extension)
 		}
@@ -40,13 +40,15 @@ func TestFormatListsExposeSupportedOpenSaveAndExportTypes(t *testing.T) {
 			t.Errorf("open formats omit %s", extension)
 		}
 	}
-	if save[".pdf"] || save[".html"] || open[".pdf"] || open[".html"] {
-		t.Fatal("PDF and HTML should be export-only formats")
+	if save[".pdf"] || save[".html"] || save[".md"] || open[".pdf"] || open[".html"] {
+		t.Fatal("Markdown, PDF, and HTML should be export-only formats")
 	}
 }
 
-func TestExportDocumentDispatchesPDFAndHTML(t *testing.T) {
-	state := document.New().Snapshot()
+func TestExportDocumentDispatchesPDFHTMLAndMarkdown(t *testing.T) {
+	doc := document.New()
+	doc.LoadText("export")
+	state := doc.Snapshot()
 	dir := t.TempDir()
 	for _, test := range []struct {
 		extension string
@@ -54,6 +56,7 @@ func TestExportDocumentDispatchesPDFAndHTML(t *testing.T) {
 	}{
 		{extension: ".pdf", signature: "%PDF-"},
 		{extension: ".html", signature: "<!doctype html>"},
+		{extension: ".md", signature: "export"},
 	} {
 		filename := filepath.Join(dir, "export"+test.extension)
 		if err := ExportDocument(filename, state); err != nil {

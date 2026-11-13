@@ -24,7 +24,7 @@ GoWrite is a terminal-native word processor built with Go and [tview](https://gi
 - **📄 Page layout**: paper size, orientation, margins, page background, headers, footers, and page numbers
 - **📊 Tables**: structured tables with per-cell formatting
 - **🔎 Navigation**: find and replace, go to line, heading outline, and page breaks
-- **💾 File formats**: GoWrite native documents, Word DOCX, RTF, plain text, Markdown import, and PDF/HTML export
+- **💾 File formats**: GoWrite native documents, Word DOCX, RTF, plain text, Markdown import/export, and PDF/HTML export
 
 ---
 
@@ -143,12 +143,12 @@ The Format screen also groups style, list, view, insert, paragraph, and page-set
 | GoWrite          | `.gdoc`   | ✅   | ✅   | —      | Native compressed document format; preserves GoWrite document and editor state                                               |
 | Word             | `.docx`   | ✅   | ✅   | ✅     | Imports and exports supported text, tables, formatting, colors, and page settings; advanced Word features may not round-trip |
 | Plain text       | `.txt`    | ✅   | ✅   | ✅     | Formatting is not retained                                                                                                   |
-| Markdown         | `.md`     | ✅   | —    | —      | Opened as plain text; Markdown syntax is not rendered                                                                        |
+| Markdown         | `.md`     | ✅   | —    | ✅     | Opens as plain text; export preserves supported styles, headings, lists, and tables                                          |
 | Rich Text Format | `.rtf`    | ✅   | ✅   | ✅     | Imports supported text formatting and tables                                                                                 |
 | PDF              | `.pdf`    | —    | —    | ✅     | Export only; embeds Go fonts                                                                                                 |
 | HTML             | `.html`   | —    | —    | ✅     | Self-contained HTML with document formatting and tables                                                                      |
 
-Save and export share one file dialog. The Open dialog accepts `.gdoc`, `.docx`, `.txt`, `.md`, and `.rtf`. Save supports `.gdoc`, `.docx`, `.txt`, and `.rtf`; Export supports `.docx`, `.txt`, `.rtf`, `.pdf`, and `.html`. Markdown is opened as plain text; RTF import preserves supported text formatting and tables. PDF and HTML exports include supported text formatting, tables, page settings, and page breaks, and do not change the active document's save state.
+Save and export share one file dialog. The Open dialog accepts `.gdoc`, `.docx`, `.txt`, `.md`, and `.rtf`. Save supports `.gdoc`, `.docx`, `.txt`, and `.rtf`; Export supports `.docx`, `.txt`, `.rtf`, `.md`, `.pdf`, and `.html`. Markdown opens as plain text; export converts supported text styles, headings, quotes, code blocks, nested lists, tables, and page breaks to Markdown, using inline HTML for underline and text colors. RTF import preserves supported text formatting and tables. PDF and HTML exports include supported text formatting, tables, page settings, and page breaks, and do not change the active document's save state.
 
 Native `.gdoc` files are gzip-compressed JSON. For safety, GoWrite rejects files that expand beyond 500 MiB when opened.
 

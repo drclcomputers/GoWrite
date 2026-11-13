@@ -297,9 +297,9 @@ func (e *Editor) showFileDialogWithReturn(mode fileDialogMode, afterSave func(),
 		action := func() {
 			extension := strings.ToLower(filepath.Ext(filename))
 			var err error
-			exporting := extension == ".pdf" || extension == ".html"
+			exporting := extension == ".pdf" || extension == ".html" || extension == ".md"
 			if afterSave != nil && exporting {
-				showDialogError("Choose a save format to continue; PDF and HTML are export-only.")
+				showDialogError("Choose a save format to continue; Markdown, PDF, and HTML are export-only.")
 				return
 			}
 			if exporting {

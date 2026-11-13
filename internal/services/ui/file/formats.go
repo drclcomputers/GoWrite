@@ -28,6 +28,7 @@ func SaveFormats() []FormatOption {
 func SaveExportFormats() []FormatOption {
 	formats := SaveFormats()
 	return append(formats,
+		FormatOption{Extension: ".md", Description: "Markdown document"},
 		FormatOption{Extension: ".pdf", Description: "PDF document"},
 		FormatOption{Extension: ".html", Description: "HTML document"},
 	)
@@ -40,6 +41,7 @@ func ExportFormats() []FormatOption {
 		{Extension: ".rtf", Description: "Rich text"},
 		{Extension: ".pdf", Description: "PDF document"},
 		{Extension: ".html", Description: "HTML document"},
+		{Extension: ".md", Description: "Markdown document"},
 	}
 }
 
