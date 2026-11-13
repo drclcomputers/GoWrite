@@ -103,8 +103,8 @@ On macOS, configure your terminal to use **Option as Meta** for Alt shortcuts.
 | Page Up / Page Down                   | Move by a screen                                   |
 | Type                                  | Insert text or replace the selection               |
 | Enter                                 | Start a new paragraph                              |
-| Backspace / Delete                    | Delete text                                        |
-| Tab                                   | Insert a tab; inside a table, open its cell editor |
+| Backspace / Delete                    | Delete text; at a list item's start, outdent or exit the list |
+| Tab / Shift + Tab                    | Indent / outdent a list item (up to 5 levels)      |
 | Esc                                   | Open the file menu                                 |
 
 ### Formatting and document actions
@@ -129,6 +129,8 @@ On macOS, configure your terminal to use **Option as Meta** for Alt shortcuts.
 | Alt + Shift + A           | Select all                                           |
 | Alt + Z / Shift + Alt + Z | Undo / redo                                          |
 | `?` or Alt + `/`          | Show help                                            |
+
+Press Enter in a list to continue at the same level; Enter on an empty list item exits the list. At a list item's start, Backspace outdents one level and eventually turns it into a normal paragraph. Tab and Shift + Tab also indent and outdent list items, up to five levels. Inside a table, Tab opens the cell editor.
 
 The Format screen also groups style, list, view, insert, paragraph, and page-setup actions. Use `Alt + Shift + Left / Right` there to move between sections.
 

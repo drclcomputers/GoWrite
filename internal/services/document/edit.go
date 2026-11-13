@@ -11,6 +11,11 @@ import (
 	"strings"
 )
 
+const (
+	listIndentWidth = 2
+	maxListLevel    = 5
+)
+
 func (d *Document) InsertRune(r rune) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -29,7 +34,7 @@ func (d *Document) InsertRune(r rune) {
 		// List auto-continuation: if the current paragraph is a list item,
 		// either continue with the next marker or exit the list when empty.
 		plain := plainOf(d.Paragraphs[d.CursorPara])
-		marker, rest, ok := parseListMarker(plain)
+		indent, marker, rest, ok := parseListItem(plain)
 		if ok {
 			// Cursor at end of a non-empty list item → continue list.
 			// Empty list item (only the marker) → stop the list.
@@ -43,7 +48,7 @@ func (d *Document) InsertRune(r rune) {
 				return
 			}
 			if atEnd {
-				next := nextListMarker(marker)
+				next := indent + nextListMarker(marker)
 				left, _ := d.splitParaAtCursor()
 				d.Paragraphs[d.CursorPara] = left
 				newPara := Paragraph{
@@ -173,6 +178,28 @@ func (d *Document) Backspace() {
 		return
 	}
 	hasSel := d.hasAnchor && (d.anchorPara != d.CursorPara || d.anchorOff != d.CursorOff)
+	if !hasSel {
+		plain := plainOf(d.Paragraphs[d.CursorPara])
+		indent, marker, _, ok := parseListItem(plain)
+		if ok {
+			indentLen, markerLen := len([]rune(indent)), len([]rune(marker))
+			contentStart := indentLen + markerLen
+			if d.CursorOff == 0 || d.CursorOff == contentStart {
+				d.pushHistory()
+				if listLevel(indent) > 1 {
+					cursorOff := d.CursorOff
+					newIndent := strings.Repeat(" ", (listLevel(indent)-2)*listIndentWidth)
+					d.replaceListIndent(indentLen, newIndent)
+					d.CursorOff = max(0, cursorOff+len([]rune(newIndent))-indentLen)
+				} else {
+					d.deleteRange(0, contentStart)
+					d.CursorOff = 0
+				}
+				d.Dirty = true
+				return
+			}
+		}
+	}
 	if !hasSel && d.CursorPara == 0 && d.CursorOff == 0 {
 		return
 	}
@@ -185,19 +212,7 @@ func (d *Document) Backspace() {
 		return
 	}
 
-	// If the cursor is immediately after a list marker, remove the whole marker
-	// (exits the list item cleanly instead of leaving a dangling "1.").
 	if d.CursorOff > 0 {
-		plain := plainOf(d.Paragraphs[d.CursorPara])
-		if marker, _, ok := parseListMarker(plain); ok {
-			mLen := len([]rune(marker))
-			if d.CursorOff == mLen {
-				d.deleteRange(0, mLen)
-				d.CursorOff = 0
-				d.Dirty = true
-				return
-			}
-		}
 		d.deleteRange(d.CursorOff-1, d.CursorOff)
 		d.CursorOff--
 		d.Dirty = true
@@ -537,12 +552,64 @@ func (d *Document) ApplyListPrefix(prefix func(i int) string) {
 	d.Dirty = true
 }
 
-// parseListMarker returns the marker (including trailing space), the rest of
-// the line, and whether a recognised list marker was found at the start.
-func parseListMarker(s string) (marker, rest string, ok bool) {
-	s = strings.TrimLeft(s, " \t")
+// ChangeListLevel adjusts the current list item by one level, up to five.
+// A level-one list item outdented past its parent becomes a normal paragraph.
+func (d *Document) ChangeListLevel(delta int) bool {
+	if delta != 1 && delta != -1 {
+		return false
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.ensureCursor()
+	if d.inTableLocked() {
+		return false
+	}
+
+	indent, marker, _, ok := parseListItem(plainOf(d.Paragraphs[d.CursorPara]))
+	if !ok {
+		return false
+	}
+	level := listLevel(indent)
+	nextLevel := level + delta
+	if nextLevel > maxListLevel {
+		return true
+	}
+	d.pushHistory()
+	if nextLevel < 1 {
+		prefixLen := len([]rune(indent)) + len([]rune(marker))
+		d.deleteRange(0, prefixLen)
+		d.CursorOff = max(0, d.CursorOff-prefixLen)
+	} else {
+		newIndent := strings.Repeat(" ", (nextLevel-1)*listIndentWidth)
+		cursorOff := d.CursorOff
+		d.replaceListIndent(len([]rune(indent)), newIndent)
+		d.CursorOff = max(0, cursorOff+len([]rune(newIndent))-len([]rune(indent)))
+	}
+	d.Dirty = true
+	return true
+}
+
+// replaceListIndent replaces only the leading indentation while preserving
+// the styles of the marker and list-item content.
+func (d *Document) replaceListIndent(oldIndentLen int, newIndent string) {
+	p := &d.Paragraphs[d.CursorPara]
+	style, fg, bg := d.ActiveStyle, d.ActiveFg, d.ActiveBg
+	if len(p.Runs) > 0 {
+		style, fg, bg = p.Runs[0].Style, p.Runs[0].Fg, p.Runs[0].Bg
+	}
+	d.deleteRange(0, oldIndentLen)
+	d.CursorOff = 0
+	if newIndent != "" {
+		d.insertIntoRuns(newIndent, style, fg, bg)
+	}
+}
+
+func parseListItem(s string) (indent, marker, rest string, ok bool) {
+	trimmed := strings.TrimLeft(s, " \t")
+	indent = s[:len(s)-len(trimmed)]
+	s = trimmed
 	if s == "" {
-		return "", "", false
+		return "", "", "", false
 	}
 	// Numbered: "1. ", "12. "
 	i := 0
@@ -550,13 +617,13 @@ func parseListMarker(s string) (marker, rest string, ok bool) {
 		i++
 	}
 	if i > 0 && i+1 < len(s) && s[i] == '.' && s[i+1] == ' ' {
-		return s[:i+2], s[i+2:], true
+		return indent, s[:i+2], s[i+2:], true
 	}
 	// Lettered: "a. ", "A. "
 	if len(s) >= 3 {
 		c := s[0]
 		if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')) && s[1] == '.' && s[2] == ' ' {
-			return s[:3], s[3:], true
+			return indent, s[:3], s[3:], true
 		}
 	}
 	// Simple roman (i. ii. iii. …) – only common short forms
@@ -565,20 +632,36 @@ func parseListMarker(s string) (marker, rest string, ok bool) {
 	for _, r := range romans {
 		if strings.HasPrefix(strings.ToLower(s), r) {
 			// Preserve original case of the marker portion
-			return s[:len(r)], s[len(r):], true
+			return indent, s[:len(r)], s[len(r):], true
 		}
 	}
 	// Bullets / checkboxes
 	for _, prefix := range []string{"[ ] ", "[x] ", "[X] ", "• ", "- ", "* ", "– ", "— "} {
 		if strings.HasPrefix(s, prefix) {
-			return prefix, s[len(prefix):], true
+			return indent, prefix, s[len(prefix):], true
 		}
 	}
-	return "", s, false
+	return "", "", s, false
+}
+
+func listLevel(indent string) int {
+	spaces := 0
+	for _, r := range indent {
+		if r == '\t' {
+			spaces += listIndentWidth
+		} else {
+			spaces++
+		}
+	}
+	level := spaces/listIndentWidth + 1
+	if level > maxListLevel {
+		return maxListLevel
+	}
+	return level
 }
 
 func stripListMarker(s string) string {
-	_, rest, ok := parseListMarker(s)
+	_, _, rest, ok := parseListItem(s)
 	if ok {
 		return rest
 	}

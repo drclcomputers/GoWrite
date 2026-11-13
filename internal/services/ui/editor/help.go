@@ -41,7 +41,8 @@ func (e *Editor) showHelp() {
   Style / Transform / Colors
   Paragraph        Title, headings, quote, code; alignment; space after (rows)
   Lists            numbered, lettered, bullets, checkboxes, roman
-                   (lists auto-continue on Enter; empty item exits)
+                   (Enter continues; Tab indents up to 5 levels;
+                    Backspace at item start / Shift+Tab outdents)
   View             Formatting marks and heading outline
   Insert           Date & Time · Symbols · Table · Page break
                    Enter at the table's upper-left adds a paragraph above;

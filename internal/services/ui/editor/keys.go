@@ -262,8 +262,17 @@ func (e *Editor) handleKeys(event *tcell.EventKey) *tcell.EventKey {
 		e.redraw()
 		return nil
 	case tcell.KeyTab:
+		if e.Doc.ChangeListLevel(1) {
+			e.redraw()
+			return nil
+		}
 		e.Doc.InsertRune('\t')
 		e.redraw()
+		return nil
+	case tcell.KeyBacktab:
+		if e.Doc.ChangeListLevel(-1) {
+			e.redraw()
+		}
 		return nil
 	}
 
